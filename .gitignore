@@ -1,0 +1,10 @@
+docs
+output
+extracted
+venv
+.env
+.py*
+CLAUDE.md
+templates
+__pycache__
+*.pyc

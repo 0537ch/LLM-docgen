@@ -1,0 +1,18 @@
+# Core dependencies
+python-docx
+google-generativeai
+streamlit
+
+# PDF processing
+PyPDF2
+pdf2image
+pdf2docx
+
+# OCR (EasyOCR)
+easyocr
+
+# Image processing
+Pillow
+
+# Utilities
+python-dotenv
