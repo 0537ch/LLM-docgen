@@ -37,20 +37,11 @@ class PengadaanStrategy(DocumentStrategy):
         if not termins:
             return None
 
-        # Roman numeral converter
-        def to_roman(n):
-            roman_numerals = {
-                1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V',
-                6: 'VI', 7: 'VII', 8: 'VIII', 9: 'IX', 10: 'X'
-            }
-            return roman_numerals.get(n, str(n))
-
         # Format payment content
         content = "Pembayaran dilakukan dengan:"
         for termin in termins:
-            roman = to_roman(termin['number'])
             condition_text = f" ({termin['condition']})" if termin['condition'] else ""
-            content += f"\n- Termin {roman} sebesar {termin['percentage']}%{condition_text}"
+            content += f"\n- Termin {termin['number']} sebesar {termin['percentage']}%{condition_text}"
 
         content += "\n\nPembayaran dilakukan sesuai ketentuan yang berlaku di PT Terminal Petikemas Surabaya"
         return content

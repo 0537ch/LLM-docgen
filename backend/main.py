@@ -58,11 +58,22 @@ def process_pdf_background(file_id: str, file_path: Path):
 
         # Start AI extraction
         progress_manager.start_ai_phase(file_id)
+        logger.info(f"[Background] Starting AI extraction for {file_id}")
 
         # Detect document type and extract
         extraction_service = ExtractionService()
+        logger.info(f"[Background] Detecting document type...")
         doc_type = extraction_service.detect_document_type(lhp_text)
-        extracted_data = extraction_service.extract_structured_data(lhp_text, doc_type)
+        logger.info(f"[Background] Document type detected: {doc_type}")
+
+        logger.info(f"[Background] Calling Gemini API for structured extraction...")
+
+        # Create progress callback for AI streaming
+        def ai_progress_callback(chunk: str):
+            progress_manager.update_ai_chunk(file_id, chunk)
+
+        extracted_data = extraction_service.extract_structured_data(lhp_text, doc_type, progress_callback=ai_progress_callback)
+        logger.info(f"[Background] AI extraction completed, got {len(extracted_data.get('items', []))} items")
 
         # Store result
         _extraction_results[file_id] = {
@@ -206,6 +217,19 @@ async def generate_documents(data: dict):
             data
         )
 
+        # Transform termin_count to payment_termins if provided
+        termin_count = data.get("termin_count", 1)
+        if termin_count and termin_count > 0:
+            percentage_per_termin = 100 / termin_count
+
+            payment_terms = {}
+            for i in range(1, termin_count + 1):
+                payment_terms[f"termin_{i}_percent"] = f"{percentage_per_termin:.1f}"
+                payment_terms[f"termin_{i}_condition"] = ""
+
+            data["payment_terms"] = payment_terms
+            logger.info(f"Generated {termin_count} payment termins with {percentage_per_termin:.1f}% each")
+
         # Use strategy for Pasal 10
         payment_content = strategy.format_payment_content(data)
         if payment_content:
@@ -240,10 +264,6 @@ async def generate_documents(data: dict):
         try:
             rks_base = strategy.get_template_name("RKS")
             rks_doc = docx_service.load_template(rks_base, "RKS")
-
-            # Add items table
-            items_with_numbers = [{**item, 'NO': i} for i, item in enumerate(data.get("items", []), 1)]
-            docx_service.add_items_table(rks_doc, items_with_numbers, placeholder="{{pasal3_content}}")
 
             # Fill template
             rks_doc = docx_service.fill_template(rks_doc, template_data)

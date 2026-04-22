@@ -26,7 +26,7 @@ export const apiService = {
   },
 
   subscribeToProgress(fileId: string, onProgress: (progress: UploadProgress) => void): () => void {
-    let eventSource = new EventSource(`${API_BASE_URL}/api/upload/progress/${fileId}`);
+    const eventSource = new EventSource(`${API_BASE_URL}/api/upload/progress/${fileId}`);
 
     eventSource.onmessage = (event) => {
       if (event.data === '[DONE]') {
@@ -36,6 +36,12 @@ export const apiService = {
 
       try {
         const progress: UploadProgress = JSON.parse(event.data);
+
+        // Log AI streaming data
+        if (progress.phase === 'ai' && progress.ai_text) {
+          console.log(`AI streaming: ${progress.ai_text.length} chars received`);
+        }
+
         onProgress(progress);
 
         if (progress.status === 'completed' || progress.status === 'error') {

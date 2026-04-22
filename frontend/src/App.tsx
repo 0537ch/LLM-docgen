@@ -91,10 +91,6 @@ function App() {
           )}
         </main>
 
-        {/* Footer */}
-        <footer className="mt-8 text-center text-sm text-slate-500">
-          <p>Powered by AI - OCR & Gemini 2.5 Flash</p>
-        </footer>
       </div>
     </div>
   );

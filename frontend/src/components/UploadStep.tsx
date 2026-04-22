@@ -4,7 +4,7 @@ import type { UploadResponse, UploadProgress } from '../types';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Progress } from './ui/progress';
-import { Upload, FileText, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Upload, FileText, AlertCircle, CheckCircle2,Brain } from 'lucide-react';
 
 interface UploadStepProps {
   onNext: (data: UploadResponse) => void;
@@ -162,6 +162,21 @@ export const UploadStep: React.FC<UploadStepProps> = ({ onNext }) => {
                   <div className="flex items-center gap-2 text-sm text-green-600">
                     <CheckCircle2 className="w-4 h-4" />
                     Extraction complete!
+                  </div>
+                )}
+
+                {/* AI Streaming Display */}
+                {progress.phase === 'ai' && progress.ai_text && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                      <Brain className="w-4 h-4 animate-pulse" />
+                      <span className="font-medium">AI is extracting data...</span>
+                    </div>
+                    <div className="bg-slate-950 text-slate-50 rounded-lg p-4 max-h-[40vh] overflow-y-auto">
+                      <pre className="text-xs font-mono whitespace-pre-wrap break-words">
+                        {progress.ai_text}
+                      </pre>
+                    </div>
                   </div>
                 )}
               </div>

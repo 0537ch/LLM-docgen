@@ -88,25 +88,25 @@ class DOCXService:
             row_cells[0].paragraphs[0].paragraph_format.line_spacing = 1.0
 
             # URAIAN
-            uraian = item.get('name', item.get('Deskripsi', item.get('URAIAN', '')))
+            uraian = item.get('uraian', item.get('name', item.get('Deskripsi', item.get('URAIAN', ''))))
             row_cells[1].text = str(uraian)
             for paragraph in row_cells[1].paragraphs:
                 paragraph.paragraph_format.line_spacing = 1.0
 
             # VOLUME
-            volume = item.get('quantity', item.get('Volume', item.get('VOLUME', '')))
+            volume = item.get('volume', item.get('quantity', item.get('Volume', item.get('VOLUME', ''))))
             row_cells[2].text = str(volume)
             row_cells[2].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
             row_cells[2].paragraphs[0].paragraph_format.line_spacing = 1.0
 
             # SATUAN
-            satuan = item.get('unit', item.get('Satuan', item.get('SATUAN', '')))
+            satuan = item.get('satuan', item.get('unit', item.get('Satuan', item.get('SATUAN', ''))))
             row_cells[3].text = str(satuan)
             row_cells[3].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
             row_cells[3].paragraphs[0].paragraph_format.line_spacing = 1.0
 
             # HARGA SATUAN
-            harga = item.get('price', item.get('Harga', item.get('HARGA', '')))
+            harga = item.get('harga_satuan', item.get('price', item.get('Harga', item.get('HARGA', ''))))
             harga_text = str(harga) if harga else '-'
             row_cells[4].text = harga_text
             row_cells[4].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.CENTER

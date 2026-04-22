@@ -10,11 +10,29 @@ class ExtractionService:
         genai.configure(api_key=Config.GEMINI_API_KEY)
         self.model = genai.GenerativeModel(Config.GEMINI_MODEL)
 
-    def _call_gemini(self, prompt: str) -> str:
-        """Call Gemini API with retry logic"""
+    def _call_gemini(self, prompt: str, stream: bool = False, progress_callback=None) -> str:
+        """Call Gemini API with retry logic and optional streaming"""
         try:
-            response = self.model.generate_content(prompt)
-            return response.text
+            if stream:
+                logger.info("AI Streaming started...")
+                response = self.model.generate_content(prompt, stream=True)
+                full_text = ""
+
+                for chunk in response:
+                    if chunk.text:
+                        full_text += chunk.text
+                        # Log each chunk to show real-time progress
+                        print(chunk.text, end='', flush=True)
+                        # Send chunk to progress manager if callback provided
+                        if progress_callback:
+                            progress_callback(chunk.text)
+
+                print()  # New line after streaming completes
+                logger.info("AI Streaming completed")
+                return full_text
+            else:
+                response = self.model.generate_content(prompt)
+                return response.text
         except Exception as e:
             logger.error(f"Gemini API error: {e}")
             raise
@@ -49,7 +67,7 @@ LHP Text:
 
         return "PENGADAAN"  # Default
 
-    def extract_structured_data(self, lhp_text: str, doc_type: str) -> Dict[str, Any]:
+    def extract_structured_data(self, lhp_text: str, doc_type: str, progress_callback=None) -> Dict[str, Any]:
         """Extract all structured data from LHP"""
         prompt = f"""
 You are an expert at extracting structured data from Indonesian government procurement documents (LHP - Laporan Hasil Pemeriksaan).
@@ -69,11 +87,11 @@ Return ONLY valid JSON. No markdown, no explanation.
   "scope_description": "Brief scope description",
   "items": [
     {{
-      "category": "Material or Jasa",
-      "name": "Item name (AGGREGATE duplicates - sum quantities if same name appears multiple times)",
-      "quantity": "Total quantity as number",
-      "unit": "Unit of measurement",
-      "specification": "Technical specs if available"
+      "no": "Row number from table (1, 2, 3, etc.)",
+      "uraian": "Item description/name",
+      "volume": "Quantity as number",
+      "satuan": "Unit (unit, pcs, kg, etc.)",
+      "harga_satuan": "Unit price if available in table, otherwise leave empty"
     }}
   ],
   "work_activities": [
@@ -90,18 +108,17 @@ Return ONLY valid JSON. No markdown, no explanation.
 }}
 
 ## Critical Extraction Rules:
-1. **Items Table**: Look for "Tabel Lingkup Item Pekerjaan" or similar tables in the LHP - extract from there FIRST
-2. **Aggregate Duplicates**: If same item name appears multiple times (e.g., 7 rows of "Radio HT"), combine into ONE row with summed quantity
-3. **DO NOT** extract work activity sentences as items - items come from tables, not activity descriptions
-4. Work activities come from numbered lists or activity descriptions, NOT from the items table
-5. Payment terms: Extract termin structure (I, II, III) with percentages and conditions
+1. Extract items from "Tabel 3.1" or similar - preserve original rows with no, uraian, volume, satuan, harga_satuan
+2. DO NOT aggregate duplicates - extract each row as-is
+3. Work activities come from numbered lists, NOT from items table
+4. Payment terms: Extract termin structure with percentages
 
 ## LHP Text to Extract From:
-{lhp_text[:4000]}
+{lhp_text[:12000]}
 """
 
         try:
-            result = self._call_gemini(prompt)
+            result = self._call_gemini(prompt, stream=True, progress_callback=progress_callback)
 
             # Parse JSON from response (handle markdown code blocks)
             import json
@@ -122,12 +139,29 @@ Return ONLY valid JSON. No markdown, no explanation.
                 "work_type": "",
                 "work_activities": [],
                 "payment_termins": [],
+                "termin_count": 1,
                 "items": []
             }
 
             for key, default_value in defaults.items():
                 if key not in data or data[key] is None:
                     data[key] = default_value
+
+            # Ensure items have required fields with defaults
+            if "items" not in data or not data["items"]:
+                data["items"] = []
+            else:
+                # Ensure each item has required fields
+                for item in data["items"]:
+                    if "no" not in item:
+                        item["no"] = ""
+                    if "uraian" not in item:
+                        item["uraian"] = ""
+                    if "volume" not in item:
+                        item["volume"] = ""
+                    if "satuan" not in item:
+                        item["satuan"] = ""
+                    # harga_satuan is optional, don't force default
 
             # Add timeline default based on document type
             if not data.get("timeline"):
@@ -139,7 +173,7 @@ Return ONLY valid JSON. No markdown, no explanation.
 
             # Always regenerate work_activities to ensure proper lifecycle format
             logger.info("Regenerating work activities with lifecycle prompt...")
-            data["work_activities"] = self.generate_work_activities(data)
+            data["work_activities"] = self.generate_work_activities(data, progress_callback=progress_callback)
             logger.info(f"Final: {len(data.get('work_activities', []))} work activities")
 
             return data
@@ -183,7 +217,7 @@ Example output for PEMELIHARAAN:
         }
         return timelines.get(doc_type, "sesuai kesepakatan")
 
-    def generate_work_activities(self, extracted_data: Dict[str, Any]) -> list:
+    def generate_work_activities(self, extracted_data: Dict[str, Any], progress_callback=None) -> list:
         """Generate detailed work activities list based on extracted data"""
         doc_type = extracted_data.get('document_type', 'PENGADAAN')
 
@@ -222,7 +256,7 @@ Generate work activities for this {doc_type} project:
 """
 
         try:
-            result = self._call_gemini(prompt)
+            result = self._call_gemini(prompt, stream=True, progress_callback=progress_callback)
 
             # Parse JSON from response
             import json

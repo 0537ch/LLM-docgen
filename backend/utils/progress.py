@@ -46,8 +46,16 @@ class ProgressManager:
                 self._progress[file_id].update({
                     "phase": "ai",
                     "message": "Extracting data with AI...",
-                    "status": "processing"
+                    "status": "processing",
+                    "ai_text": ""  # Initialize AI text accumulator
                 })
+
+    def update_ai_chunk(self, file_id: str, chunk: str):
+        """Update AI streaming text chunk"""
+        with self._lock:
+            if file_id in self._progress:
+                current_text = self._progress[file_id].get("ai_text", "")
+                self._progress[file_id]["ai_text"] = current_text + chunk
 
     def get_progress(self, file_id: str) -> Dict:
         """Get current progress for a file"""

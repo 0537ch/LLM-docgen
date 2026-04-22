@@ -1,9 +1,9 @@
 export interface Item {
-  name: string;
-  quantity: string | number;
-  unit: string;
-  specification?: string;
-  category: 'Material' | 'Jasa';
+  no: string | number;
+  uraian: string;
+  volume: string | number;
+  satuan: string;
+  harga_satuan?: string | number;
 }
 
 export interface ExtractedData {
@@ -15,6 +15,7 @@ export interface ExtractedData {
   scope_description: string;
   work_activities: string[];
   items: Item[];
+  termin_count: number;
   payment_terms?: Record<string, string>;
   document_type: 'PENGADAAN' | 'PEMELIHARAAN' | 'PADI_UMKM';
 }
@@ -41,4 +42,5 @@ export interface UploadProgress {
   status: 'processing' | 'completed' | 'error';
   message: string;
   phase: 'ocr' | 'ai';
+  ai_text?: string;
 }

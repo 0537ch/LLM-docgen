@@ -461,10 +461,6 @@ def page_3_generate_download():
                         rks_base = strategy.get_template_name("RKS")
                         rks_doc = docx_service.load_template(rks_base, "RKS")
 
-                        # Add items table to RKS at Pasal 3 placeholder position FIRST
-                        items_with_numbers = [{**item, 'NO': i} for i, item in enumerate(data.get("items", []), 1)]
-                        docx_service.add_items_table(rks_doc, items_with_numbers, "Tabel 3.1 Lingkup Item Pekerjaan", placeholder="{{pasal3_content}}")
-
                         # Then fill the rest of the template
                         rks_doc = docx_service.fill_template(rks_doc, template_data)
 
