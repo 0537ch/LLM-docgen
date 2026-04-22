@@ -154,10 +154,10 @@ Return ONLY valid JSON. No markdown, no explanation.
 Example output for PENGADAAN:
 [
   "Melakukan persiapan dan perencanaan pengadaan perangkat termasuk spesifikasi teknis dan koordinasi dengan pihak terkait",
-  "Melakukan pengadaan perangkat (Extra Mic, Baterai, Charger) untuk mengganti unit yang rusak guna menunjang operasional",
+  "Melakukan pengadaan kabel fiber optic beserta peripheral pendukungnya guna membangun fasilitas kabel Fiber Optic koneksi jaringan data 4 (empat) unit QCC di dermaga dikoneksikan ke jaringan data internal PT TPS.",
   "Melakukan pengiriman barang ke lokasi dan pemeriksaan kualitas serta kelengkapan perangkat",
   "Melakukan instalasi dan konfigurasi perangkat serta pengujian fungsionalitas untuk memastikan kesiapan operasional",
-  "Melakukan pelatihan penggunaan dan pemeliharaan perangkat kepada tim pengguna",
+  " Melakukan instalasi, splacing, labeling dan uji koneksi (OTDR) seluruh core fiber optic pada panel network terminasi di kade meter yang telah ditentukan disis dermaga, menuju panel network switch di gedung a",
   "Melakukan serah terima pekerjaan dan penyusunan dokumentasi teknis serta laporan pelaksanaan"
 ]
 """,
@@ -210,7 +210,7 @@ Generate a numbered list of detailed work activities (Pasal 2 format) for {doc_t
 {examples}
 
 ### Requirements:
-- Generate 5-10 activities following the pattern above
+- Generate 4-6 activities following the pattern above
 - Group related items into broader activities (NOT 1 activity per item)
 - Follow appropriate phases for {doc_type}
 - Include purpose/context in each activity

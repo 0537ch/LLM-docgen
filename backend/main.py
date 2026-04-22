@@ -1,0 +1,297 @@
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse, Response
+from pathlib import Path
+from typing import Optional
+import shutil
+import uuid
+import json
+import threading
+import asyncio
+
+from services.ocr_service import OCRService
+from services.extraction_service import ExtractionService
+from services.docx_service import DOCXService
+from utils.config import Config
+from utils.logger import setup_logger
+from utils.progress import progress_manager
+from strategies import StrategyFactory
+
+logger = setup_logger("api")
+
+app = FastAPI(title="RAB/RKS Generator API")
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],  # Vite default
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Upload directory
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+# Output directory
+OUTPUT_DIR = Path(Config.OUTPUT_DIR)
+OUTPUT_DIR.mkdir(exist_ok=True)
+
+
+# Store results in memory (in production, use Redis or database)
+_extraction_results: dict = {}
+
+
+
+def process_pdf_background(file_id: str, file_path: Path):
+    """Background task to process PDF with progress updates"""
+    try:
+        logger.info(f"[Background] Task started for {file_id}")
+        ocr_service = OCRService()
+        def progress_callback(current_page: int, total_pages: int, message: str):
+            progress_manager.update_progress(file_id, current_page, total_pages, message)
+        # OCR extraction with progress
+        logger.info(f"[Background] Starting OCR for {file_id}")
+        lhp_text = ocr_service.extract_text(str(file_path), progress_callback=progress_callback)
+        logger.info(f"[Background] OCR completed, {len(lhp_text)} chars")
+
+        # Start AI extraction
+        progress_manager.start_ai_phase(file_id)
+
+        # Detect document type and extract
+        extraction_service = ExtractionService()
+        doc_type = extraction_service.detect_document_type(lhp_text)
+        extracted_data = extraction_service.extract_structured_data(lhp_text, doc_type)
+
+        # Store result
+        _extraction_results[file_id] = {
+            "lhp_text": lhp_text,
+            "extracted_data": extracted_data,
+            "document_type": doc_type
+        }
+
+        # Mark complete
+        progress_manager.complete_upload(file_id, success=True)
+
+        # Clean up uploaded file
+        file_path.unlink()
+
+    except Exception as e:
+        logger.error(f"[Background] Processing error: {e}")
+        progress_manager.complete_upload(file_id, success=False, error=str(e))
+        file_path.unlink()
+
+    
+
+async def progress_stream(file_id: str):
+    """SSE stream for progress updates"""
+    try:
+        progress = progress_manager.get_progress(file_id)
+        yield f"data: {json.dumps(progress)}\n\n"
+
+        while True:
+            progress = progress_manager.get_progress(file_id)
+            yield f"data: {json.dumps(progress)}\n\n"
+
+            # If completed or error, stop streaming
+            if progress["status"] in ["completed", "error"]:
+                # Send final state twice to ensure it's received
+                yield f"data: {json.dumps(progress)}\n\n"
+                await asyncio.sleep(0.2)
+                yield "data: [DONE]\n\n"
+                await asyncio.sleep(0.2)
+                break
+
+            await asyncio.sleep(0.5)
+
+    except asyncio.CancelledError:
+        pass  # Stream cancelled
+
+
+@app.get("/")
+async def root():
+    return {"message": "RAB/RKS Generator API", "version": "1.0.0"}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
+
+
+@app.post("/api/upload")
+async def upload_pdf(file: UploadFile = File(...)):
+    """Upload PDF and start background processing"""
+    try:
+        # Save uploaded file
+        file_id = str(uuid.uuid4())
+        file_path = UPLOAD_DIR / f"{file_id}.pdf"
+
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        logger.info(f"Uploaded file: {file.filename} -> {file_path}")
+
+        # Initialize progress
+        progress_manager.start_upload(file_id, total_pages=1)
+
+        # Start background processing in thread
+        thread = threading.Thread(target=process_pdf_background, args=(file_id, file_path))
+        thread.daemon = True
+        thread.start()
+
+        # Return immediately
+        return {
+            "file_id": file_id,
+            "message": "Processing started"
+        }
+
+    except Exception as e:
+        logger.error(f"Upload error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/upload/progress/{file_id}")
+async def upload_progress(file_id: str):
+    """SSE endpoint for real-time OCR progress"""
+    return StreamingResponse(
+        progress_stream(file_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+
+@app.post("/api/upload/result/{file_id}")
+async def get_upload_result(file_id: str):
+    """Get extraction result after processing completes"""
+    if file_id not in _extraction_results:
+        raise HTTPException(status_code=404, detail="Result not found or processing incomplete")
+
+    result = _extraction_results[file_id]
+
+    # Cleanup
+    progress_manager.cleanup(file_id)
+
+    return {
+        "file_id": file_id,
+        **result
+    }
+
+
+@app.post("/api/generate")
+async def generate_documents(data: dict):
+    """Generate RAB and RKS documents"""
+    try:
+        doc_type = data.get("document_type", "PENGADAAN")
+        strategy = StrategyFactory.create(doc_type)
+
+        # Format template data
+        from datetime import datetime
+
+        template_data = {
+            "project_name": data.get("project_name", ""),
+            "timeline": data.get("timeline", ""),
+            "work_type": data.get("work_type", ""),
+            "date": datetime.now().strftime("%d %B %Y"),
+        }
+
+        # Use strategy for Pasal 2
+        template_data["pasal2_content"] = strategy.format_work_activities(
+            data.get("work_activities", []),
+            data
+        )
+
+        # Use strategy for Pasal 10
+        payment_content = strategy.format_payment_content(data)
+        if payment_content:
+            template_data["pasal10_content"] = payment_content
+
+        docx_service = DOCXService()
+        generated_files = {}
+
+        # Generate RAB
+        try:
+            rab_base = strategy.get_template_name("RAB")
+            rab_doc = docx_service.load_template(rab_base, "RAB")
+
+            # Add items table
+            items_with_numbers = [{**item, 'NO': i} for i, item in enumerate(data.get("items", []), 1)]
+            rab_table = docx_service.add_items_table(rab_doc, items_with_numbers, placeholder="{{items_table}}")
+            docx_service.add_summary_table(rab_doc, rab_table, ppn_percent=11)
+
+            # Fill template
+            template_data_for_rab = {k: v for k, v in template_data.items() if k != "rab_items_table"}
+            rab_doc = docx_service.fill_template(rab_doc, template_data_for_rab)
+
+            rab_path = OUTPUT_DIR / f"RAB_{data.get('project_name', 'project').replace(' ', '_')}_{uuid.uuid4().hex[:8]}.docx"
+            docx_service.save_document(rab_doc, str(rab_path))
+            generated_files["rab"] = rab_path.name
+
+            logger.info(f"Generated RAB: {rab_path}")
+        except FileNotFoundError as e:
+            logger.warning(f"RAB template not found: {e}")
+
+        # Generate RKS
+        try:
+            rks_base = strategy.get_template_name("RKS")
+            rks_doc = docx_service.load_template(rks_base, "RKS")
+
+            # Add items table
+            items_with_numbers = [{**item, 'NO': i} for i, item in enumerate(data.get("items", []), 1)]
+            docx_service.add_items_table(rks_doc, items_with_numbers, placeholder="{{pasal3_content}}")
+
+            # Fill template
+            rks_doc = docx_service.fill_template(rks_doc, template_data)
+
+            rks_path = OUTPUT_DIR / f"RKS_{data.get('project_name', 'project').replace(' ', '_')}_{uuid.uuid4().hex[:8]}.docx"
+            docx_service.save_document(rks_doc, str(rks_path))
+            generated_files["rks"] = rks_path.name
+
+            logger.info(f"Generated RKS: {rks_path}")
+        except FileNotFoundError as e:
+            logger.warning(f"RKS template not found: {e}")
+
+        return {
+            "success": True,
+            "files": generated_files,
+            "document_type": doc_type
+        }
+
+    except Exception as e:
+        logger.error(f"Generation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/download/{filename}")
+async def download_file(filename: str):
+    """Download generated document"""
+    file_path = OUTPUT_DIR / filename
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        path=file_path,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=filename
+    )
+
+
+@app.get("/api/document-types")
+async def get_document_types():
+    """Get supported document types"""
+    return {
+        "document_types": Config.DOC_TYPES,
+        "default": "PENGADAAN"
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

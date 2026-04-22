@@ -1,0 +1,44 @@
+export interface Item {
+  name: string;
+  quantity: string | number;
+  unit: string;
+  specification?: string;
+  category: 'Material' | 'Jasa';
+}
+
+export interface ExtractedData {
+  project_name: string;
+  timeline: string;
+  work_type: string;
+  location: string;
+  location_details: string;
+  scope_description: string;
+  work_activities: string[];
+  items: Item[];
+  payment_terms?: Record<string, string>;
+  document_type: 'PENGADAAN' | 'PEMELIHARAAN' | 'PADI_UMKM';
+}
+
+export interface UploadResponse {
+  file_id: string;
+  lhp_text: string;
+  extracted_data: ExtractedData;
+  document_type: string;
+}
+
+export interface GenerateResponse {
+  success: boolean;
+  files: {
+    rab?: string;
+    rks?: string;
+  };
+  document_type: string;
+}
+
+export interface UploadProgress {
+  current_page: number;
+  total_pages: number;
+  status: 'processing' | 'completed' | 'error';
+  message: string;
+  phase: 'ocr' | 'ai';
+}

@@ -8,3 +8,23 @@ CLAUDE.md
 templates
 __pycache__
 *.pyc
+node_modules
+
+# Frontend
+dist/
+dist-ssr/
+*.local
+.vite/
+.turbo/
+build/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/

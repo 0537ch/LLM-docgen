@@ -2,7 +2,7 @@ import easyocr
 import numpy as np
 from pdf2image import convert_from_path
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 from utils.logger import setup_logger
 
 logger = setup_logger("ocr_service")
@@ -23,8 +23,14 @@ class OCRService:
             )
         return self._reader
 
-    def extract_text(self, pdf_path: str, dpi: int = 300) -> str:
-        """Extract text from PDF using OCR"""
+    def extract_text(self, pdf_path: str, dpi: int = 300, progress_callback: Optional[Callable] = None) -> str:
+        """Extract text from PDF using OCR
+
+        Args:
+            pdf_path: Path to PDF file
+            dpi: DPI for PDF to image conversion
+            progress_callback: Optional callback(current_page, total_pages, message)
+        """
         pdf_path = Path(pdf_path)
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF not found: {pdf_path}")
@@ -33,10 +39,15 @@ class OCRService:
 
         # Convert PDF to images
         images = convert_from_path(str(pdf_path), dpi=dpi)
+        total_pages = len(images)
         full_text = ''
 
         for page_num, image in enumerate(images, start=1):
-            logger.debug(f"OCR page {page_num}/{len(images)}")
+            logger.debug(f"OCR page {page_num}/{total_pages}")
+
+            # Report progress
+            if progress_callback:
+                progress_callback(page_num, total_pages, f"Processing page {page_num}/{total_pages}")
 
             # Convert PIL image to numpy array
             image_array = np.array(image)

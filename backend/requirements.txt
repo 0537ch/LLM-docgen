@@ -1,7 +1,9 @@
 # Core dependencies
 python-docx
 google-generativeai
-streamlit
+fastapi
+uvicorn
+python-multipart
 
 # PDF processing
 PyPDF2
