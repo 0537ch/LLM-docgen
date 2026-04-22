@@ -10,6 +10,9 @@ __pycache__
 *.pyc
 node_modules
 
+# Backend uploads
+uploads/
+
 # Frontend
 dist/
 dist-ssr/

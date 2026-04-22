@@ -102,6 +102,7 @@ Return ONLY valid JSON. No markdown, no explanation.
 
         try:
             result = self._call_gemini(prompt)
+
             # Parse JSON from response (handle markdown code blocks)
             import json
             if "```json" in result:
