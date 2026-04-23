@@ -15,7 +15,7 @@ export interface ExtractedData {
   scope_description: string;
   work_activities: string[];
   items: Item[];
-  termin_count: number;
+  termin_count: number | '';
   payment_terms?: Record<string, string>;
   document_type: 'PENGADAAN' | 'PEMELIHARAAN' | 'PADI_UMKM';
 }

@@ -3,15 +3,14 @@ import { apiService } from '../services/api';
 import type { ExtractedData } from '../types';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { ArrowLeft, Download, FileText, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Download, FileText, CheckCircle2, RefreshCw } from 'lucide-react';
+import { TerminPreview } from './TerminPreview';
 
 interface GenerateStepProps {
   data: ExtractedData;
-  onBack: () => void;
-  onReset: () => void;
 }
 
-export const GenerateStep: React.FC<GenerateStepProps> = ({ data, onBack, onReset }) => {
+export const GenerateStep: React.FC<GenerateStepProps> = ({ data }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generatedFiles, setGeneratedFiles] = useState<{
@@ -19,13 +18,20 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({ data, onBack, onRese
     rks?: string;
   } | null>(null);
 
+  const [paymentTerms, setPaymentTerms] = useState<Record<string, string>>(
+    data.payment_terms || {}
+  );
+
   const handleGenerate = async () => {
     setLoading(true);
     setError(null);
     setGeneratedFiles(null);
 
     try {
-      const result = await apiService.generateDocuments(data);
+      const result = await apiService.generateDocuments({
+        ...data,
+        payment_terms: paymentTerms
+      });
       setGeneratedFiles(result.files);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Generation failed';
@@ -47,16 +53,10 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({ data, onBack, onRese
 
   return (
     <div className="p-6 space-y-6">
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold">Generate Documents</h2>
-          </div>
-          <Button variant="outline" onClick={onBack}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
-          </Button>
+        <div>
+          <h2 className="text-2xl font-bold">Generate Documents</h2>
         </div>
 
         {/* Preview Cards */}
@@ -107,6 +107,13 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({ data, onBack, onRese
             </CardContent>
           </Card>
         </div>
+
+        {/* Termin Preview */}
+        <TerminPreview
+          terminCount={data.termin_count || 1}
+          initialValues={data.payment_terms}
+          onChange={setPaymentTerms}
+        />
 
         {/* Pasal 2 Preview */}
         <Card>
@@ -191,18 +198,6 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({ data, onBack, onRese
             </CardContent>
           </Card>
         )}
-
-        {/* Actions */}
-        <div className="flex gap-3 justify-end">
-          <Button variant="outline" onClick={onBack}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
-          </Button>
-          <Button variant="outline" onClick={onReset}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Start Over
-          </Button>
-        </div>
       </div>
     </div>
   );

@@ -211,15 +211,12 @@ async def generate_documents(data: dict):
             "date": datetime.now().strftime("%d %B %Y"),
         }
 
-        # Use strategy for Pasal 2
-        template_data["pasal2_content"] = strategy.format_work_activities(
-            data.get("work_activities", []),
-            data
-        )
+        # Pass work_activities as array for numbered list formatting
+        template_data["work_activities"] = data.get("work_activities", [])
 
-        # Transform termin_count to payment_termins if provided
+        # Transform termin_count to payment_termins if payment_terms not already provided
         termin_count = data.get("termin_count", 1)
-        if termin_count and termin_count > 0:
+        if termin_count and termin_count > 0 and not data.get("payment_terms"):
             percentage_per_termin = 100 / termin_count
 
             payment_terms = {}
@@ -250,7 +247,8 @@ async def generate_documents(data: dict):
 
             # Fill template
             template_data_for_rab = {k: v for k, v in template_data.items() if k != "rab_items_table"}
-            rab_doc = docx_service.fill_template(rab_doc, template_data_for_rab)
+            list_placeholders = ["work_activities"]
+            rab_doc = docx_service.fill_template(rab_doc, template_data_for_rab, list_placeholders=list_placeholders)
 
             rab_path = OUTPUT_DIR / f"RAB_{data.get('project_name', 'project').replace(' ', '_')}_{uuid.uuid4().hex[:8]}.docx"
             docx_service.save_document(rab_doc, str(rab_path))
@@ -266,7 +264,8 @@ async def generate_documents(data: dict):
             rks_doc = docx_service.load_template(rks_base, "RKS")
 
             # Fill template
-            rks_doc = docx_service.fill_template(rks_doc, template_data)
+            list_placeholders = ["work_activities"]
+            rks_doc = docx_service.fill_template(rks_doc, template_data, list_placeholders=list_placeholders)
 
             rks_path = OUTPUT_DIR / f"RKS_{data.get('project_name', 'project').replace(' ', '_')}_{uuid.uuid4().hex[:8]}.docx"
             docx_service.save_document(rks_doc, str(rks_path))

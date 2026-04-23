@@ -184,26 +184,54 @@ class DOCXService:
 
         logger.info(f"Added summary: Total={total}, PPN={ppn}, Grand Total={grand_total}")
 
-    def replace_placeholders(self, doc: Document, replacements: Dict[str, str]) -> None:
-        """Replace placeholders in document while preserving formatting"""
+    def replace_placeholders(self, doc: Document, replacements: Dict[str, Any], list_placeholders: List[str] = None) -> None:
+        """Replace placeholders in document while preserving formatting
+
+        Args:
+            doc: Document object
+            replacements: Dict of placeholder names to values (strings or lists)
+            list_placeholders: List of placeholder keys that should be formatted as numbered lists
+        """
+        if list_placeholders is None:
+            list_placeholders = []
+
         logger.info(f"Replacing placeholders: {list(replacements.keys())}")
+        logger.info(f"List placeholders: {list_placeholders}")
         replaced_count = 0
 
+        # Handle list-type placeholders first
+        for list_key in list_placeholders:
+            if list_key in replacements:
+                placeholder = f"{{{{{list_key}}}}}"
+                value = replacements[list_key]
+
+                if isinstance(value, list):
+                    self.insert_numbered_list(doc, value, placeholder)
+                    replaced_count += 1
+                else:
+                    logger.warning(f"List placeholder '{list_key}' received non-list value: {type(value)}")
+
+        # Handle normal text placeholders (skip list placeholders)
         for paragraph in doc.paragraphs:
             for key, value in replacements.items():
+                if key in list_placeholders:
+                    continue  # Already handled
+
                 placeholder = f"{{{{{key}}}}}"
                 if placeholder in paragraph.text:
-                    # Preserve formatting by replacing in runs
                     self._replace_text_in_paragraph(paragraph, placeholder, str(value))
                     logger.info(f"Replaced placeholder: {placeholder}")
                     replaced_count += 1
 
-        # Also check tables
+        # Also check tables for normal placeholders
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
                     for paragraph in cell.paragraphs:
                         for key, value in replacements.items():
+                            if key in list_placeholders:
+                                continue  # Already handled
+
                             placeholder = f"{{{{{key}}}}}"
                             if placeholder in paragraph.text:
                                 self._replace_text_in_paragraph(paragraph, placeholder, str(value))
@@ -212,30 +240,36 @@ class DOCXService:
 
         logger.info(f"Total placeholders replaced: {replaced_count}")
 
-        # Also check tables
-        for table in doc.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    for paragraph in cell.paragraphs:
-                        for key, value in replacements.items():
-                            placeholder = f"{{{{{key}}}}}"
-                            if placeholder in paragraph.text:
-                                self._replace_text_in_paragraph(paragraph, placeholder, str(value))
-
     def _replace_text_in_paragraph(self, paragraph, old_text, new_text):
         """Replace text in paragraph while preserving formatting"""
         for run in paragraph.runs:
             if old_text in run.text:
                 run.text = run.text.replace(old_text, new_text)
 
-    def fill_template(self, doc: Document, data: Dict[str, Any]) -> Document:
-        """Fill template with extracted data"""
-        # Use all data fields for replacement
-        replacements = {key: str(value) if value is not None else ""
-                      for key, value in data.items()}
+    def fill_template(self, doc: Document, data: Dict[str, Any], list_placeholders: List[str] = None) -> Document:
+        """Fill template with extracted data
 
-        self.replace_placeholders(doc, replacements)
+        Args:
+            doc: Document object
+            data: Dict of placeholder names to values
+            list_placeholders: List of keys that should be formatted as numbered lists
+        """
+        if list_placeholders is None:
+            list_placeholders = []
+
+        # Convert all values to strings except list placeholders
+        replacements = {}
+        for key, value in data.items():
+            if key in list_placeholders:
+                # Keep as-is (should be list)
+                replacements[key] = value
+            else:
+                # Convert to string, None -> empty string
+                replacements[key] = str(value) if value is not None else ""
+
+        self.replace_placeholders(doc, replacements, list_placeholders)
         return doc
+
 
     def save_document(self, doc: Document, output_path: str) -> None:
         """Save document to file"""
@@ -244,3 +278,96 @@ class DOCXService:
 
         logger.info(f"Saving document to: {output_path}")
         doc.save(str(output_path))
+    
+    def insert_numbered_list(self, doc: Document, activities: List[str], placeholder: str) -> None:
+        """Insert work activities as Word numbered list at placeholder position
+
+        Args:
+            doc: Document object
+            activities: List of activity strings (no manual numbering)
+            placeholder: Placeholder text to find (e.g., "{{pasal2_content}}")
+
+        Behavior:
+            - Finds paragraph containing placeholder
+            - Inserts each activity as separate paragraph with "List Number" style
+            - Deletes placeholder paragraph
+            - Falls back to manual numbering if "List Number" style missing
+        """
+        if not activities:
+            logger.warning("No activities to insert")
+            return
+
+        # Find placeholder paragraph
+        placeholder_paragraph = None
+        for paragraph in doc.paragraphs:
+            if placeholder in paragraph.text:
+                placeholder_paragraph = paragraph
+                logger.info(f"Found placeholder '{placeholder}'")
+                break
+
+        if not placeholder_paragraph:
+            logger.warning(f"Placeholder '{placeholder}' not found")
+            return
+
+        # Check if "List Number" style exists
+        style_name = "List Number"
+        style_exists = any(s.name == style_name for s in doc.styles)
+
+        # Get placeholder position (insertion point)
+        placeholder_element = placeholder_paragraph._element
+
+        # Store placeholder formatting for copying
+        placeholder_alignment = placeholder_paragraph.alignment
+        placeholder_paragraph_format = placeholder_paragraph.paragraph_format
+
+        # Get font from placeholder (use first run if available)
+        placeholder_font = None
+        if placeholder_paragraph.runs:
+            placeholder_font = placeholder_paragraph.runs[0].font
+
+        # Insert each activity as numbered paragraph
+        for activity in activities:
+            if not activity.strip():
+                continue
+
+            # Create new paragraph
+            new_para = doc.add_paragraph(activity)
+
+            # Copy placeholder formatting
+            new_para.alignment = placeholder_alignment
+
+            # Copy paragraph format (line spacing, etc.)
+            if placeholder_paragraph_format:
+                new_para.paragraph_format.line_spacing = placeholder_paragraph_format.line_spacing
+                new_para.paragraph_format.space_before = placeholder_paragraph_format.space_before
+                new_para.paragraph_format.space_after = placeholder_paragraph_format.space_after
+
+            # Copy font formatting
+            if placeholder_font and new_para.runs:
+                new_font = new_para.runs[0].font
+                new_font.name = placeholder_font.name
+                new_font.size = placeholder_font.size
+                new_font.bold = placeholder_font.bold
+                new_font.italic = placeholder_font.italic
+
+            # Apply numbering style or fallback
+            if style_exists:
+                try:
+                    new_para.style = style_name
+                except Exception as e:
+                    logger.warning(f"Failed to apply style: {e}, using manual numbering")
+                    # Add manual numbering as fallback
+                    new_para.text = f"{doc.paragraphs.index(new_para) + 1}. {activity}"
+            else:
+                # Manual numbering fallback
+                new_para.text = f"{doc.paragraphs.index(new_para) + 1}. {activity}"
+                logger.warning(f"Style '{style_name}' not found, using manual numbering")
+
+            # Move paragraph to placeholder position
+            new_para_element = new_para._element
+            placeholder_element.addnext(new_para_element)
+
+        # Remove placeholder paragraph
+        placeholder_paragraph.text = ""
+        logger.info(f"Inserted {len(activities)} activities as numbered list")
+

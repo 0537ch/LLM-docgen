@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { ExtractedData, Item } from '../types';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -7,19 +7,23 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { ArrowLeft, ArrowRight, Plus, Trash2, Package } from 'lucide-react';
+import { Plus, Trash2, Package } from 'lucide-react';
 
 interface ReviewStepProps {
   data: ExtractedData;
   onUpdate: (data: ExtractedData) => void;
-  onBack: () => void;
 }
 
-export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate, onBack }) => {
+export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate }) => {
   const [editedData, setEditedData] = useState<ExtractedData>({
     ...data,
     termin_count: data.termin_count || 1
   });
+
+  // Sync edits to parent immediately
+  useEffect(() => {
+    onUpdate(editedData);
+  }, [editedData, onUpdate]);
 
   const handleInputChange = (field: keyof ExtractedData, value: string | number) => {
     setEditedData((prev) => ({ ...prev, [field]: value }));
@@ -81,32 +85,18 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate, onBack }
     }));
   };
 
-  const validateItems = (items: Item[]): boolean => {
-    return items.every(item =>
-      item.uraian.trim() !== '' &&
-      item.volume !== '' &&
-      item.satuan.trim() !== ''
-    );
-  };
-
   return (
-    <div className="p-6 space-y-6">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="p-6 space-y-4">
+      <div className="max-w-4xl mx-auto space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold">Review & Edit Data</h2>
-          </div>
-          <Button variant="outline" onClick={onBack}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
-          </Button>
+        <div>
+          <h3 className="text-2xl font-bold">Review & Edit Data</h3>
         </div>
 
         {/* Document Type */}
         <Card>
           <CardHeader>
-            <CardTitle>Document Type</CardTitle>
+            <CardTitle>Tipe Dokumen</CardTitle>
           </CardHeader>
           <CardContent>
             <Select
@@ -118,7 +108,6 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate, onBack }
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="PENGADAAN">PENGADAAN</SelectItem>
-                <SelectItem value="PEMELIHARAAN">PEMELIHARAAN</SelectItem>
                 <SelectItem value="PADI_UMKM">PADI_UMKM</SelectItem>
               </SelectContent>
             </Select>
@@ -128,16 +117,16 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate, onBack }
         {/* Basic Information */}
         <Card>
           <CardHeader>
-            <CardTitle>Basic Information</CardTitle>
+            <CardTitle>Informasi Dasar</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Project Name</Label>
+                <Label>Nama Proyek</Label>
                 <Input
                   value={editedData.project_name}
                   onChange={(e) => handleInputChange('project_name', e.target.value)}
-                  placeholder="Enter project name"
+                  placeholder="Masukkan nama proyek"
                 />
               </div>
               <div className="space-y-2">
@@ -145,25 +134,25 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate, onBack }
                 <Input
                   value={editedData.timeline}
                   onChange={(e) => handleInputChange('timeline', e.target.value)}
-                  placeholder="e.g., 3 bulan"
+                  placeholder="Contoh: 3 bulan"
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Location</Label>
+                <Label>Lokasi</Label>
                 <Input
                   value={editedData.location}
                   onChange={(e) => handleInputChange('location', e.target.value)}
-                  placeholder="Enter location"
+                  placeholder="Masukkan lokasi"
                 />
               </div>
               <div className="space-y-2">
-                <Label>Work Type</Label>
+                <Label>Jenis Pekerjaan</Label>
                 <Input
                   value={editedData.work_type}
                   onChange={(e) => handleInputChange('work_type', e.target.value)}
-                  placeholder="Enter work type"
+                  placeholder="Masukkan jenis pekerjaan"
                 />
               </div>
             </div>
@@ -173,8 +162,24 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate, onBack }
                 type="number"
                 min="1"
                 max="16"
-                value={editedData.termin_count || 1}
-                onChange={(e) => handleInputChange('termin_count', parseInt(e.target.value) || 1)}
+                value={editedData.termin_count === '' ? '' : (editedData.termin_count || 1)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === '') {
+                    handleInputChange('termin_count', '');
+                  } else {
+                    const num = parseInt(value);
+                    if (!isNaN(num)) {
+                      handleInputChange('termin_count', num);
+                    }
+                  }
+                }}
+                onBlur={(e) => {
+                  if (e.target.value === '') {
+                    handleInputChange('termin_count', '');
+                  }
+                }}
+                onFocus={(e) => e.target.select()}
                 placeholder="1"
               />
               <p className="text-sm text-muted-foreground">
@@ -227,12 +232,13 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate, onBack }
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Package className="w-5 h-5" />
-              Items (Tabel 3.1)
+              Item (Tabel 3.1)
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
+            <div className="overflow-y-auto max-h-[300px]">
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 bg-background z-10">
                 <TableRow>
                   <TableHead className="w-16">No</TableHead>
                   <TableHead>Uraian</TableHead>
@@ -294,6 +300,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate, onBack }
                 ))}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
 
           <CardContent>
@@ -307,27 +314,6 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate, onBack }
             </Button>
           </CardContent>
         </Card>
-
-        {/* Actions */}
-        <div className="flex gap-3 justify-end">
-          <Button variant="outline" onClick={onBack}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
-          </Button>
-          <Button
-            onClick={() => {
-              if (!validateItems(editedData.items)) {
-                alert('Mohon lengkapi semua field wajib (No, Uraian, Volume, Satuan)');
-                return;
-              }
-              onUpdate(editedData);
-            }}
-            size="lg"
-          >
-            Next: Generate
-            <ArrowRight className="w-4 h-4 ml-2" />
-          </Button>
-        </div>
       </div>
     </div>
   );
