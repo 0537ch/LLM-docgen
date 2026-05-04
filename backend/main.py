@@ -68,11 +68,23 @@ def process_pdf_background(file_id: str, file_path: Path):
 
         logger.info(f"[Background] Calling Gemini API for structured extraction...")
 
-        # Create progress callback for AI streaming
+        # Create progress callback for AI streaming and progress
         def ai_progress_callback(chunk: str):
             progress_manager.update_ai_chunk(file_id, chunk)
 
-        extracted_data = extraction_service.extract_structured_data(lhp_text, doc_type, progress_callback=ai_progress_callback)
+        # Update AI progress milestones
+        progress_manager.update_ai_progress(file_id, 10)  # Starting extraction
+
+        # Create AI progress callback for milestones
+        def ai_milestone_callback(progress_percent: int):
+            progress_manager.update_ai_progress(file_id, progress_percent)
+
+        extracted_data = extraction_service.extract_structured_data(
+            lhp_text, doc_type,
+            progress_callback=ai_progress_callback,
+            ai_progress_callback=ai_milestone_callback
+        )
+        progress_manager.update_ai_progress(file_id, 100)  # Extraction complete
         logger.info(f"[Background] AI extraction completed, got {len(extracted_data.get('items', []))} items")
 
         # Store result
@@ -194,6 +206,83 @@ async def get_upload_result(file_id: str):
     }
 
 
+@app.post("/api/preview")
+async def preview_documents(data: dict):
+    """Generate preview HTML for RAB and RKS documents"""
+    try:
+        doc_type = data.get("document_type", "PENGADAAN")
+        strategy = StrategyFactory.create(doc_type)
+
+        from datetime import datetime
+
+        template_data = {
+            "project_name": data.get("project_name", ""),
+            "timeline": data.get("timeline", ""),
+            "work_type": data.get("work_type", ""),
+            "date": datetime.now().strftime("%d %B %Y"),
+        }
+
+        template_data["work_activities"] = data.get("work_activities", [])
+
+        termin_count = data.get("termin_count", 1)
+        if termin_count and termin_count > 0 and not data.get("payment_terms"):
+            percentage_per_termin = 100 / termin_count
+            payment_terms = {}
+            for i in range(1, termin_count + 1):
+                payment_terms[f"termin_{i}_percent"] = f"{percentage_per_termin:.1f}"
+                payment_terms[f"termin_{i}_condition"] = ""
+            data["payment_terms"] = payment_terms
+
+        payment_content = strategy.format_payment_content(data)
+        if payment_content:
+            template_data["pasal10_content"] = payment_content
+
+        docx_service = DOCXService()
+        result = {}
+
+        # Generate RAB preview
+        try:
+            rab_base = strategy.get_template_name("RAB")
+            rab_doc = docx_service.load_template(rab_base, "RAB")
+
+            items_with_numbers = [{**item, 'NO': i} for i, item in enumerate(data.get("items", []), 1)]
+            rab_table = docx_service.add_items_table(rab_doc, items_with_numbers, placeholder="{{items_table}}")
+            docx_service.add_summary_table(rab_doc, rab_table, ppn_percent=11)
+
+            template_data_for_rab = {k: v for k, v in template_data.items() if k != "rab_items_table"}
+            list_placeholders = ["work_activities", "pasal10_content"]
+            rab_doc = docx_service.fill_template(rab_doc, template_data_for_rab, list_placeholders=list_placeholders)
+
+            result["rab"] = docx_service.docx_to_html(rab_doc)
+            logger.info(f"Generated RAB preview HTML, length: {len(result['rab'])}")
+        except Exception as e:
+            logger.error(f"RAB preview error: {e}")
+            result["rab"] = f"<html><body><p>Error generating RAB preview: {e}</p></body></html>"
+
+        # Generate RKS preview
+        try:
+            rks_base = strategy.get_template_name("RKS")
+            rks_doc = docx_service.load_template(rks_base, "RKS")
+
+            items_with_numbers = [{**item, 'NO': i} for i, item in enumerate(data.get("items", []), 1)]
+            rks_table = docx_service.add_items_table_no_price(rks_doc, items_with_numbers, placeholder="{{pasal3_table}}")
+
+            list_placeholders = ["work_activities", "pasal10_content"]
+            rks_doc = docx_service.fill_template(rks_doc, template_data, list_placeholders=list_placeholders)
+
+            result["rks"] = docx_service.docx_to_html(rks_doc)
+            logger.info(f"Generated RKS preview HTML, length: {len(result['rks'])}")
+        except Exception as e:
+            logger.error(f"RKS preview error: {e}")
+            result["rks"] = f"<html><body><p>Error generating RKS preview: {e}</p></body></html>"
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Preview error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/generate")
 async def generate_documents(data: dict):
     """Generate RAB and RKS documents"""
@@ -247,7 +336,7 @@ async def generate_documents(data: dict):
 
             # Fill template
             template_data_for_rab = {k: v for k, v in template_data.items() if k != "rab_items_table"}
-            list_placeholders = ["work_activities"]
+            list_placeholders = ["work_activities", "pasal10_content"]
             rab_doc = docx_service.fill_template(rab_doc, template_data_for_rab, list_placeholders=list_placeholders)
 
             rab_path = OUTPUT_DIR / f"RAB_{data.get('project_name', 'project').replace(' ', '_')}_{uuid.uuid4().hex[:8]}.docx"
@@ -262,9 +351,14 @@ async def generate_documents(data: dict):
         try:
             rks_base = strategy.get_template_name("RKS")
             rks_doc = docx_service.load_template(rks_base, "RKS")
+            logger.info(f"[DEBUG] RKS document loaded: {rks_doc is not None}")
+
+            # Add items table without price for Pasal 3
+            items_with_numbers = [{**item, 'NO': i} for i, item in enumerate(data.get("items", []), 1)]
+            rks_table = docx_service.add_items_table_no_price(rks_doc, items_with_numbers, placeholder="{{pasal3_table}}")
 
             # Fill template
-            list_placeholders = ["work_activities"]
+            list_placeholders = ["work_activities", "pasal10_content"]
             rks_doc = docx_service.fill_template(rks_doc, template_data, list_placeholders=list_placeholders)
 
             rks_path = OUTPUT_DIR / f"RKS_{data.get('project_name', 'project').replace(' ', '_')}_{uuid.uuid4().hex[:8]}.docx"

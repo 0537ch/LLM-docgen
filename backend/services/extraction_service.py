@@ -67,7 +67,7 @@ LHP Text:
 
         return "PENGADAAN"  # Default
 
-    def extract_structured_data(self, lhp_text: str, doc_type: str, progress_callback=None) -> Dict[str, Any]:
+    def extract_structured_data(self, lhp_text: str, doc_type: str, progress_callback=None, ai_progress_callback=None) -> Dict[str, Any]:
         """Extract all structured data from LHP"""
         prompt = f"""
 You are an expert at extracting structured data from Indonesian government procurement documents (LHP - Laporan Hasil Pemeriksaan).
@@ -82,8 +82,6 @@ Return ONLY valid JSON. No markdown, no explanation.
   "project_name": "Complete project name from LHP",
   "work_type": "Type of work (e.g., Pengadaan, Pemeliharaan)",
   "timeline": "Duration with start condition",
-  "location": "Implementation location",
-  "location_details": "Detailed location if available",
   "scope_description": "Brief scope description",
   "items": [
     {{
@@ -118,7 +116,11 @@ Return ONLY valid JSON. No markdown, no explanation.
 """
 
         try:
+            if ai_progress_callback:
+                ai_progress_callback(30)  # Request sent
             result = self._call_gemini(prompt, stream=True, progress_callback=progress_callback)
+            if ai_progress_callback:
+                ai_progress_callback(80)  # Response received, parsing
 
             # Parse JSON from response (handle markdown code blocks)
             import json
@@ -133,8 +135,6 @@ Return ONLY valid JSON. No markdown, no explanation.
             # Ensure required fields have defaults
             defaults = {
                 "timeline": "",
-                "location": "",
-                "location_details": "",
                 "scope_description": "",
                 "work_type": "",
                 "work_activities": [],
@@ -167,13 +167,13 @@ Return ONLY valid JSON. No markdown, no explanation.
             if not data.get("timeline"):
                 data["timeline"] = self._get_default_timeline(doc_type)
 
-            # Add location_details fallback
-            if not data.get("location_details") and data.get("location"):
-                data["location_details"] = f"di lingkungan {data['location']}"
-
             # Always regenerate work_activities to ensure proper lifecycle format
             logger.info("Regenerating work activities with lifecycle prompt...")
+            if ai_progress_callback:
+                ai_progress_callback(90)  # Generating work activities
             data["work_activities"] = self.generate_work_activities(data, progress_callback=progress_callback)
+            if ai_progress_callback:
+                ai_progress_callback(95)  # Finalizing
             logger.info(f"Final: {len(data.get('work_activities', []))} work activities")
 
             return data
@@ -181,33 +181,6 @@ Return ONLY valid JSON. No markdown, no explanation.
         except Exception as e:
             logger.error(f"Failed to parse extraction: {e}")
             raise
-
-    def _get_work_activity_examples(self, doc_type: str) -> str:
-        """Get few-shot examples for specific document type"""
-        examples = {
-            "PENGADAAN": """
-Example output for PENGADAAN:
-[
-  "Melakukan persiapan dan perencanaan pengadaan perangkat termasuk spesifikasi teknis dan koordinasi dengan pihak terkait",
-  "Melakukan pengadaan kabel fiber optic beserta peripheral pendukungnya guna membangun fasilitas kabel Fiber Optic koneksi jaringan data 4 (empat) unit QCC di dermaga dikoneksikan ke jaringan data internal PT TPS.",
-  "Melakukan pengiriman barang ke lokasi dan pemeriksaan kualitas serta kelengkapan perangkat",
-  "Melakukan instalasi dan konfigurasi perangkat serta pengujian fungsionalitas untuk memastikan kesiapan operasional",
-  " Melakukan instalasi, splacing, labeling dan uji koneksi (OTDR) seluruh core fiber optic pada panel network terminasi di kade meter yang telah ditentukan disis dermaga, menuju panel network switch di gedung a",
-  "Melakukan serah terima pekerjaan dan penyusunan dokumentasi teknis serta laporan pelaksanaan"
-]
-""",
-            "PEMELIHARAAN": """
-Example output for PEMELIHARAAN:
-[
-  "Melakukan inspeksi dan pemeriksaan kondisi perangkat untuk mengidentifikasi kerusakan dan kebutuhan perbaikan",
-  "Melakukan perbaikan dan penggantian komponen yang rusak atau aus sesuai standar teknis",
-  "Melakukan pengujian dan verifikasi fungsionalitas perangkat setelah perbaikan",
-  "Melakukan pemeliharaan berkala untuk memastikan performa optimal dan mencegah kerusakan",
-  "Menyusun laporan pemeliharaan yang mencakup detail pekerjaan dan rekomendasi perawatan"
-]
-"""
-        }
-        return examples.get(doc_type, examples["PENGADAAN"])
 
     def _get_default_timeline(self, doc_type: str) -> str:
         """Get default timeline based on document type"""
@@ -222,7 +195,9 @@ Example output for PEMELIHARAAN:
         doc_type = extracted_data.get('document_type', 'PENGADAAN')
 
         # Get doc-type-specific examples
-        examples = self._get_work_activity_examples(doc_type)
+        from strategies.factory import StrategyFactory
+        strategy = StrategyFactory.create(doc_type)
+        examples = strategy.get_work_activity_examples()
 
         prompt = f"""
 You are an expert at writing Indonesian government procurement documents (RKS - Rencana Kerja & Syarat).
@@ -232,8 +207,6 @@ Generate a numbered list of detailed work activities (Pasal 2 format) for {doc_t
 ## Project Data:
 - Project: {extracted_data.get('project_name', '')}
 - Work Type: {extracted_data.get('work_type', '')}
-- Location: {extracted_data.get('location', '')}
-- Location Details: {extracted_data.get('location_details', '')}
 - Scope: {extracted_data.get('scope_description', '')}
 
 ## Items:
@@ -245,7 +218,7 @@ Generate a numbered list of detailed work activities (Pasal 2 format) for {doc_t
 {examples}
 
 ### Requirements:
-- Generate 4-6 activities following the pattern above
+- Generate 2-6 activities following the pattern above
 - Group related items into broader activities (NOT 1 activity per item)
 - Follow appropriate phases for {doc_type}
 - Include purpose/context in each activity

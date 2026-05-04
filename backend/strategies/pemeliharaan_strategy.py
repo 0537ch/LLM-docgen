@@ -12,8 +12,7 @@ class PemeliharaanStrategy(DocumentStrategy):
             'fixed_payment': None
         }
 
-    def format_payment_content(self, data: Dict[str, Any]) -> Optional[str]:
-        # Same logic as Pengadaan - dynamic termins
+    def format_payment_content(self, data: Dict[str, Any]) -> Optional[List[str]]:
         payment_terms = data.get('payment_terms', {})
 
         termins = []
@@ -25,25 +24,22 @@ class PemeliharaanStrategy(DocumentStrategy):
         for key in termin_keys:
             termin_num = key.split('_')[1]
             percent = payment_terms.get(f'termin_{termin_num}_percent', '')
-            condition = payment_terms.get(f'termin_{termin_num}_condition', '')
 
             if percent:
                 termins.append({
                     'number': int(termin_num),
-                    'percentage': percent,
-                    'condition': condition
+                    'percentage': percent
                 })
 
         if not termins:
             return None
 
-        content = "Pembayaran dilakukan dengan:"
+        # Return list for Word auto-numbering (no manual numbers)
+        lines = []
         for termin in termins:
-            condition_text = f" ({termin['condition']})" if termin['condition'] else ""
-            content += f"\n- Termin {termin['number']} sebesar {termin['percentage']}%{condition_text}"
+            lines.append(f"Termin {termin['number']} sebesar {termin['percentage']}% dari Kontrak atau PO.")
 
-        content += "\n\nPembayaran dilakukan sesuai ketentuan yang berlaku di PT Terminal Petikemas Surabaya"
-        return content
+        return lines
 
     def format_work_activities(self, activities: List[str], data: Dict[str, Any] = None) -> str:
         if not activities:
@@ -63,4 +59,4 @@ class PemeliharaanStrategy(DocumentStrategy):
     def get_template_name(self, doc_type: str) -> str:
         if doc_type == "RAB":
             return "pengadaan"  # Base name only
-        return "Pemeliharaan (TOS)"  # Base name only (no "RKS_" prefix)
+        return "pemeliharaan"  # Base name only (no "RKS_" prefix)

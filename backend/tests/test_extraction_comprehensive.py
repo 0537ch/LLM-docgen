@@ -33,8 +33,8 @@ def test_extract_all_fields_from_lhp():
 
     # Verify all required fields exist
     required_fields = [
-        "project_name", "items", "timeline", "location",
-        "work_type", "scope_description", "location_details",
+        "project_name", "items", "timeline", 
+        "work_type", "scope_description",
         "work_activities", "payment_termins"
     ]
     for field in required_fields:
@@ -57,8 +57,6 @@ def test_extract_all_fields_from_lhp():
     print(f"✓ Project: {data.get('project_name')}")
     print(f"✓ Work Type: {data.get('work_type')}")
     print(f"✓ Timeline: {data.get('timeline')}")
-    print(f"✓ Location: {data.get('location')}")
-    print(f"✓ Location Details: {data.get('location_details')}")
     print(f"✓ Scope: {data.get('scope_description')}")
     print(f"✓ Items count: {len(data['items'])}")
 

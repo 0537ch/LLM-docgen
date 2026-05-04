@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { apiService } from '../services/api';
 import type { ExtractedData } from '../types';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Download, FileText, CheckCircle2, RefreshCw } from 'lucide-react';
-import { TerminPreview } from './TerminPreview';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
+import { Download, FileText, CheckCircle2, RefreshCw, Loader2 } from 'lucide-react';
 
 interface GenerateStepProps {
   data: ExtractedData;
@@ -18,9 +18,33 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({ data }) => {
     rks?: string;
   } | null>(null);
 
-  const [paymentTerms, setPaymentTerms] = useState<Record<string, string>>(
-    data.payment_terms || {}
-  );
+  // Preview state
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [rabHtml, setRabHtml] = useState<string | null>(null);
+  const [rksHtml, setRksHtml] = useState<string | null>(null);
+
+  const rksPreviewHtml = rksHtml ? `<style>p strong{text-align:center!important}p{text-align:justify!important}ol{text-align:left!important}</style>${rksHtml}` : '';
+
+  // Load preview on mount
+  useEffect(() => {
+    const fetchPreview = async () => {
+      setPreviewLoading(true);
+      setPreviewError(null);
+
+      try {
+        const result = await apiService.previewDocuments(data);
+        setRabHtml(result.rab);
+        setRksHtml(result.rks);
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Preview failed';
+        setPreviewError(errorMessage);
+      } finally {
+        setPreviewLoading(false);
+      }
+    };
+    fetchPreview();
+  }, [data]);
 
   const handleGenerate = async () => {
     setLoading(true);
@@ -28,10 +52,7 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({ data }) => {
     setGeneratedFiles(null);
 
     try {
-      const result = await apiService.generateDocuments({
-        ...data,
-        payment_terms: paymentTerms
-      });
+      const result = await apiService.generateDocuments(data);
       setGeneratedFiles(result.files);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Generation failed';
@@ -52,82 +73,71 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({ data }) => {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-4">
       <div className="max-w-4xl mx-auto space-y-4">
         {/* Header */}
         <div>
           <h2 className="text-2xl font-bold">Generate Documents</h2>
         </div>
 
-        {/* Preview Cards */}
-        <div className="grid grid-cols-2 gap-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="w-5 h-5" />
-                RAB Preview
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div>
-                <span className="text-slate-500">Project:</span>
-                <p className="font-medium">{data.project_name}</p>
-              </div>
-              <div>
-                <span className="text-slate-500">Items:</span>
-                <p className="font-medium">{data.items.length} items</p>
-              </div>
-              <div>
-                <span className="text-slate-500">Type:</span>
-                <p className="font-medium">{data.document_type}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="w-5 h-5" />
-                RKS Preview
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div>
-                <span className="text-slate-500">Location:</span>
-                <p className="font-medium">{data.location}</p>
-              </div>
-              <div>
-                <span className="text-slate-500">Timeline:</span>
-                <p className="font-medium">{data.timeline}</p>
-              </div>
-              <div>
-                <span className="text-slate-500">Activities:</span>
-                <p className="font-medium">{data.work_activities.length} activities</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Termin Preview */}
-        <TerminPreview
-          terminCount={data.termin_count || 1}
-          initialValues={data.payment_terms}
-          onChange={setPaymentTerms}
-        />
-
-        {/* Pasal 2 Preview */}
+        {/* Preview Section */}
         <Card>
           <CardHeader>
-            <CardTitle>Pasal 2 Content</CardTitle>
+            <CardTitle>Preview</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2 text-sm max-h-64 overflow-y-auto">
-              {data.work_activities.map((activity, index) => (
-                <p key={index} className="text-slate-700">
-                  <span className="font-medium">{index + 1}.</span> {activity}
-                </p>
-              ))}
-            </div>
+            <Tabs defaultValue="rab">
+              <TabsList className="mb-4">
+                <TabsTrigger value="rab">RAB</TabsTrigger>
+                <TabsTrigger value="rks">RKS</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="rab">
+                <div className="bg-slate-50 rounded-lg p-4 min-h-[400px] max-h-[60vh] overflow-y-auto">
+                  {previewLoading ? (
+                    <div className="flex items-center justify-center h-[400px]">
+                      <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+                    </div>
+                  ) : previewError ? (
+                    <div className="flex flex-col items-center justify-center h-[400px] gap-4">
+                      <p className="text-destructive">{previewError}</p>
+                      <Button variant="outline" onClick={() => window.location.reload()}>
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Retry Preview
+                      </Button>
+                    </div>
+                  ) : (
+                    <div
+                      className="bg-white p-6 shadow-md rounded font-serif text-sm [&_p]:text-center [&_strong]:text-center [&_td]:border [&_td]:border-slate-300 [&_td]:p-2 [&_th]:border [&_th]:border-slate-300 [&_th]:p-2 [&_th]:bg-slate-100"
+                      dangerouslySetInnerHTML={{ __html: rabHtml || '' }}
+                    />
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="rks">
+                <div className="bg-slate-50 rounded-lg p-4 min-h-[400px] max-h-[60vh] overflow-y-auto">
+                  {previewLoading ? (
+                    <div className="flex items-center justify-center h-[400px]">
+                      <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+                    </div>
+                  ) : previewError ? (
+                    <div className="flex flex-col items-center justify-center h-[400px] gap-4">
+                      <p className="text-destructive">{previewError}</p>
+                      <Button variant="outline" onClick={() => window.location.reload()}>
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Retry Preview
+                      </Button>
+                    </div>
+                  ) : (
+                    <div
+                      className="bg-white p-6 shadow-md rounded font-serif text-sm [&_table]:border-collapse [&_table]:w-full [&_table]:my-4 [&_td]:border [&_td]:border-slate-300 [&_td]:p-2 [&_th]:border [&_th]:border-slate-300 [&_th]:p-2 [&_th]:bg-slate-100"
+                      dangerouslySetInnerHTML={{ __html: rksPreviewHtml }}
+                    />
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
 
@@ -146,7 +156,10 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({ data }) => {
                   Generating Documents...
                 </>
               ) : (
-                'Generate Documents'
+                <>
+                  <FileText className="w-4 h-4 mr-2" />
+                  Generate Documents
+                </>
               )}
             </Button>
           </CardContent>

@@ -47,8 +47,15 @@ class ProgressManager:
                     "phase": "ai",
                     "message": "Extracting data with AI...",
                     "status": "processing",
-                    "ai_text": ""  # Initialize AI text accumulator
+                    "ai_text": "",  # Initialize AI text accumulator
+                    "ai_progress": 0  # AI progress percentage (0-100)
                 })
+
+    def update_ai_progress(self, file_id: str, progress_percent: int):
+        """Update AI extraction progress (0-100)"""
+        with self._lock:
+            if file_id in self._progress:
+                self._progress[file_id]["ai_progress"] = min(100, max(0, progress_percent))
 
     def update_ai_chunk(self, file_id: str, chunk: str):
         """Update AI streaming text chunk"""

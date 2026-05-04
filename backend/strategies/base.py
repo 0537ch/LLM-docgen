@@ -40,10 +40,10 @@ class DocumentStrategy(ABC):
         pass
 
     @abstractmethod
-    def format_payment_content(self, data: Dict[str, Any]) -> Optional[str]:
+    def format_payment_content(self, data: Dict[str, Any]) -> Optional[List[str]]:
         """Format pasal_10 payment content
 
-        Returns formatted string or None (use template hardcoded)
+        Returns list of termin strings (for Word auto-numbering) or None
         """
         pass
 

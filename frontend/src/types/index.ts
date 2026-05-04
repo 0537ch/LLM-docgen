@@ -10,14 +10,13 @@ export interface ExtractedData {
   project_name: string;
   timeline: string;
   work_type: string;
-  location: string;
-  location_details: string;
   scope_description: string;
   work_activities: string[];
   items: Item[];
   termin_count: number | '';
   payment_terms?: Record<string, string>;
   document_type: 'PENGADAAN' | 'PEMELIHARAAN' | 'PADI_UMKM';
+  validation_errors?: string[];
 }
 
 export interface UploadResponse {
@@ -43,4 +42,5 @@ export interface UploadProgress {
   message: string;
   phase: 'ocr' | 'ai';
   ai_text?: string;
+  ai_progress?: number;  // 0-100 during AI phase
 }

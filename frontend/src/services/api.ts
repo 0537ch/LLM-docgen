@@ -37,11 +37,6 @@ export const apiService = {
       try {
         const progress: UploadProgress = JSON.parse(event.data);
 
-        // Log AI streaming data
-        if (progress.phase === 'ai' && progress.ai_text) {
-          console.log(`AI streaming: ${progress.ai_text.length} chars received`);
-        }
-
         onProgress(progress);
 
         if (progress.status === 'completed' || progress.status === 'error') {
@@ -69,6 +64,11 @@ export const apiService = {
 
   async generateDocuments(data: ExtractedData): Promise<GenerateResponse> {
     const response = await api.post<GenerateResponse>('/api/generate', data);
+    return response.data;
+  },
+
+  async previewDocuments(data: ExtractedData): Promise<{ rab: string; rks: string }> {
+    const response = await api.post<{ rab: string; rks: string }>('/api/preview', data);
     return response.data;
   },
 

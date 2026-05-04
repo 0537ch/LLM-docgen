@@ -23,8 +23,8 @@ class DOCXService:
         if not template_path.exists():
             raise FileNotFoundError(f"Template not found: {template_path}")
 
-        logger.info(f"Loading template: {template_path.name}")
-        return Document(str(template_path))
+        doc = Document(str(template_path))
+        return doc
 
     def add_items_table(self, doc: Document, items: List[Dict], table_title: str = '', placeholder: str = None) -> 'docx.table.Table':
         """Add items table with actual DOCX table structure
@@ -54,18 +54,21 @@ class DOCXService:
 
         # Create table using python-docx API
         table = doc.add_table(rows=1, cols=5)
-        # Try to set Table Grid style, but don't fail if it doesn't exist
-        try:
-            table.style = 'Table Grid'
-            logger.info(f"Successfully set table style to 'Table Grid'")
-        except KeyError as e:
-            logger.warning(f"Table Grid style not found in template: {e}. Using default style.")
-            # List available styles for debugging
-            available_styles = [s.name for s in doc.styles]
-            logger.info(f"Available table styles in template: {available_styles[:10]}")  # First 10
+        table.style = 'Table Grid'
+
+        # Set table width to auto for autofit to CONTENT (not page width)
+        from docx.oxml.shared import OxmlElement, qn
+        tbl_w = OxmlElement('w:tblW')
+        tbl_w.set(qn('w:type'), 'auto')
+        tbl_w.set(qn('w:w'), '0')
+        table._element.tblPr.append(tbl_w)
 
         # Enable autofit for table
-        table.allow_autofit = True
+        table.autofit = True
+
+        # Remove fixed column widths to allow autofit to work
+        for column in table.columns:
+            column.width = None
 
         # Add headers
         headers = ['NO', 'URAIAN', 'VOLUME', 'SATUAN', 'HARGA SATUAN']
@@ -126,6 +129,96 @@ class DOCXService:
         else:
             logger.info("Appended table to end of document")
 
+        return table
+
+    def add_items_table_no_price(self, doc: Document, items: List[Dict], table_title: str = '', placeholder: str = None) -> 'docx.table.Table':
+        """Add items table WITHOUT price columns (for RKS Pasal 3)
+
+        Args:
+            doc: Document object
+            items: List of item dictionaries
+            table_title: Optional title for the table
+            placeholder: If provided, find this placeholder and insert table there instead of at end
+
+        Returns:
+            The created table object
+        """
+        if not items:
+            logger.warning("No items to add to table")
+            return
+
+        # Find insertion point if placeholder specified
+        placeholder_paragraph = None
+
+        if placeholder:
+            for paragraph in doc.paragraphs:
+                if placeholder in paragraph.text:
+                    placeholder_paragraph = paragraph
+                    logger.info(f"Found placeholder '{placeholder}'")
+                    break
+
+        # Create table using python-docx API (4 columns, no price)
+        table = doc.add_table(rows=1, cols=4)
+        table.style = 'Table Grid'
+
+        # Enable autofit for table
+        table.autofit = True
+
+        # Remove fixed column widths to allow autofit to work
+        for column in table.columns:
+            column.width = None
+
+        # Add headers (no HARGA SATUAN)
+        headers = ['NO', 'URAIAN', 'VOLUME', 'SATUAN']
+        header_cells = table.rows[0].cells
+        for i, header in enumerate(headers):
+            header_cells[i].text = header
+            for paragraph in header_cells[i].paragraphs:
+                paragraph.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+                paragraph.paragraph_format.line_spacing = 1.0
+                for run in paragraph.runs:
+                    run.bold = False
+
+        # Add data rows (only 4 columns)
+        for idx, item in enumerate(items, start=1):
+            row_cells = table.add_row().cells
+
+            # NO
+            row_cells[0].text = str(item.get('NO', idx))
+            row_cells[0].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+            row_cells[0].paragraphs[0].paragraph_format.line_spacing = 1.0
+
+            # URAIAN
+            uraian = item.get('uraian', item.get('name', item.get('Deskripsi', item.get('URAIAN', ''))))
+            row_cells[1].text = str(uraian)
+            for paragraph in row_cells[1].paragraphs:
+                paragraph.paragraph_format.line_spacing = 1.0
+
+            # VOLUME
+            volume = item.get('volume', item.get('quantity', item.get('Volume', item.get('VOLUME', ''))))
+            row_cells[2].text = str(volume)
+            row_cells[2].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+            row_cells[2].paragraphs[0].paragraph_format.line_spacing = 1.0
+
+            # SATUAN
+            satuan = item.get('satuan', item.get('unit', item.get('Satuan', item.get('SATUAN', ''))))
+            row_cells[3].text = str(satuan)
+            row_cells[3].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+            row_cells[3].paragraphs[0].paragraph_format.line_spacing = 1.0
+
+        # Move table to placeholder position if specified
+        if placeholder_paragraph:
+            # Get table element
+            table_element = table._element
+
+            # Insert table element after placeholder paragraph
+            placeholder_paragraph._element.addnext(table_element)
+
+            # Clear placeholder text but keep paragraph
+            placeholder_paragraph.text = ""
+            logger.info(f"Moved table to placeholder position")
+        else:
+            logger.info("Appended table to end of document")
         logger.info(f"Added table with {len(items)} rows")
         return table
 
@@ -278,7 +371,21 @@ class DOCXService:
 
         logger.info(f"Saving document to: {output_path}")
         doc.save(str(output_path))
-    
+
+    def docx_to_html(self, doc: Document) -> str:
+        """Convert docx Document to HTML string using mammoth"""
+        from mammoth import convert_to_html
+
+        # Save docx to bytes for mammoth
+        from io import BytesIO
+        docx_bytes = BytesIO()
+        doc.save(docx_bytes)
+        docx_bytes.seek(0)
+
+        # Convert to HTML
+        result = convert_to_html(docx_bytes)
+        return result.value
+
     def insert_numbered_list(self, doc: Document, activities: List[str], placeholder: str) -> None:
         """Insert work activities as Word numbered list at placeholder position
 
@@ -325,8 +432,11 @@ class DOCXService:
         if placeholder_paragraph.runs:
             placeholder_font = placeholder_paragraph.runs[0].font
 
+        # Track insertion point to maintain order
+        last_element = placeholder_element
+
         # Insert each activity as numbered paragraph
-        for activity in activities:
+        for idx, activity in enumerate(activities, start=1):
             if not activity.strip():
                 continue
 
@@ -357,15 +467,16 @@ class DOCXService:
                 except Exception as e:
                     logger.warning(f"Failed to apply style: {e}, using manual numbering")
                     # Add manual numbering as fallback
-                    new_para.text = f"{doc.paragraphs.index(new_para) + 1}. {activity}"
+                    new_para.text = f"{idx}. {activity}"
             else:
                 # Manual numbering fallback
-                new_para.text = f"{doc.paragraphs.index(new_para) + 1}. {activity}"
+                new_para.text = f"{idx}. {activity}"
                 logger.warning(f"Style '{style_name}' not found, using manual numbering")
 
-            # Move paragraph to placeholder position
+            # Move paragraph to correct position (after last inserted)
             new_para_element = new_para._element
-            placeholder_element.addnext(new_para_element)
+            last_element.addnext(new_para_element)
+            last_element = new_para_element
 
         # Remove placeholder paragraph
         placeholder_paragraph.text = ""

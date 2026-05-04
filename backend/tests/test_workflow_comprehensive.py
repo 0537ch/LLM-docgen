@@ -25,10 +25,6 @@ def format_pasal_3_content(data):
     if data.get("scope_description"):
         parts.append(data["scope_description"])
 
-    # Add location details paragraph
-    if data.get("location_details"):
-        parts.append(f"\nDetail lokasi dan jalur pelaksanaan pekerjaan untuk {data.get('project_name', '')} dapat disampaikan sebagai berikut:")
-        parts.append(f"\n{data['location_details']}")
 
     # Add table transition
     items = data.get("items", [])

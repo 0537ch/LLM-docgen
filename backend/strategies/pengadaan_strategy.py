@@ -12,7 +12,7 @@ class PengadaanStrategy(DocumentStrategy):
             'fixed_payment': None
         }
 
-    def format_payment_content(self, data: Dict[str, Any]) -> Optional[str]:
+    def format_payment_content(self, data: Dict[str, Any]) -> Optional[List[str]]:
         payment_terms = data.get('payment_terms', {})
 
         # Collect all termins
@@ -37,14 +37,18 @@ class PengadaanStrategy(DocumentStrategy):
         if not termins:
             return None
 
-        # Format payment content
-        content = "Pembayaran dilakukan dengan:"
-        for termin in termins:
-            condition_text = f" ({termin['condition']})" if termin['condition'] else ""
-            content += f"\n- Termin {termin['number']} sebesar {termin['percentage']}%{condition_text}"
+        # Return list for Word auto-numbering (no manual numbers in text)
+        def number_to_roman(n):
+            roman = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X',
+                     'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI']
+            return roman[n - 1] if n <= len(roman) else str(n)
 
-        content += "\n\nPembayaran dilakukan sesuai ketentuan yang berlaku di PT Terminal Petikemas Surabaya"
-        return content
+        lines = []
+        for termin in termins:
+            roman_num = number_to_roman(termin['number'])
+            lines.append(f"Termin {roman_num} sebesar {termin['percentage']}% dari Kontrak atau PO.")
+
+        return lines
 
     def format_work_activities(self, activities: List[str], data: Dict[str, Any] = None) -> str:
         if not activities:
@@ -57,9 +61,13 @@ class PengadaanStrategy(DocumentStrategy):
 
     def get_work_activity_examples(self) -> str:
         return """Examples for PENGADAAN work activities:
-- Melakukan pengadaan kabel fiber optic beserta peripheral pendukung
-- Melakukan instalasi central panel khusus kebutuhan koneksi FO QCC di Gedung CBO Lt.2
-- Melakukan instalasi, splicing, labeling dan uji koneksi (OTDR) seluruh core fiber optic"""
+                    [
+                    "Pekerjaan Pengadaan Fiber Optic Koneksi 4 (empat) unit QCC Baru merupakan upaya membangun fasilitas kabel Fiber Optic koneksi jaringan data 4 (empat) unit QCC di dermaga untuk terkoneksi ke jaringan data internal PT TPS"
+                    "Melakukan Pengadaan Radio HT Kebutuhan BCMS, iPnC dan Operasional Dermaga Lapangan beserta aksesoris pendukungnya"
+                    "Melakukan pengujian fungsionalitas seluruh aksesoris radio HT yang telah diadakan (Extra Mic, Baterai HT, dan Set Charger beserta adaptor) untuk memastikan kompatibilitas, kinerja optimal, dan kesiapan operasional dalam menunjang komunikasi dan koordinasi Tim Keamanan dan Tim Mekanik CC"
+                    "garansi"
+                    "Melakukan instalasi, splacing, labeling dan uji koneksi (OTDR) seluruh core fiber optic pada panel network terminasi di kade meter yang telah ditentukan disis dermaga, menuju panel network switch di gedung CBO lt.2."
+                    ]"""
 
     def get_template_name(self, doc_type: str) -> str:
         return "pengadaan"  # Base name only, load_template adds prefix

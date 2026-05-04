@@ -7,7 +7,79 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Plus, Trash2, Package } from 'lucide-react';
+import { Plus, Trash2, Package, GripVertical } from 'lucide-react';
+import { TerminPreview } from './TerminPreview';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+// Helper function to move array item
+function arrayMove<T>(array: T[], from: number, to: number): T[] {
+  const newArray = [...array];
+  const [removed] = newArray.splice(from, 1);
+  newArray.splice(to, 0, removed);
+  return newArray;
+}
+
+
+interface SortableActivityProps {
+  activity: string;
+  index: number;
+  onUpdate: (index: number, value: string) => void;
+  onDelete: (index: number) => void;
+}
+
+function SortableActivity({ activity, index, onUpdate, onDelete }: SortableActivityProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: index });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex gap-2 items-start">
+      {/* Drag handle */}
+      <div
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing p-2 hover:bg-slate-100 rounded mt-6 border-2 border-blue-500 bg-blue-50"
+      >
+        <GripVertical className="w-6 h-6 text-blue-600" />
+      </div>
+      
+
+      {/* Activity input */}
+      <div className="flex-1 space-y-2">
+        <Label>Poin 2.{index + 1}</Label>
+        <Textarea
+          value={activity}
+          onChange={(e) => onUpdate(index, e.target.value)}
+          rows={2}
+          className="resize-none"
+        />
+      </div>
+
+      {/* Delete button */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => onDelete(index)}
+        className="mt-6"
+      >
+        <Trash2 className="w-4 h-4" />
+      </Button>
+    </div>
+  );
+}
 
 interface ReviewStepProps {
   data: ExtractedData;
@@ -19,11 +91,37 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate }) => {
     ...data,
     termin_count: data.termin_count || 1
   });
+  const [paymentTerms, setPaymentTerms] = useState<Record<string, string>>(data.payment_terms || {});
+  const [tempTerminCount, setTempTerminCount] = useState<string>(String(data.termin_count || 1));
+  const [isTerminValid, setIsTerminValid] = useState(true);
 
-  // Sync edits to parent immediately
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setEditedData((prev) => ({
+        ...prev,
+        work_activities: arrayMove(prev.work_activities, active.id as number, over.id as number)
+      }));
+    }
+  };
+
+  // Sync edits and validation to parent
   useEffect(() => {
-    onUpdate(editedData);
-  }, [editedData, onUpdate]);
+    const validationErrors: string[] = [];
+    if (editedData.document_type !== 'PADI_UMKM' && !isTerminValid) {
+      validationErrors.push('Total persentase termin melebihi 100%');
+    }
+    const dataToSync = { ...editedData, payment_terms: paymentTerms, validation_errors: validationErrors };
+    onUpdate(dataToSync);
+  }, [editedData, paymentTerms, isTerminValid, onUpdate]);
 
   const handleInputChange = (field: keyof ExtractedData, value: string | number) => {
     setEditedData((prev) => ({ ...prev, [field]: value }));
@@ -140,14 +238,6 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate }) => {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Lokasi</Label>
-                <Input
-                  value={editedData.location}
-                  onChange={(e) => handleInputChange('location', e.target.value)}
-                  placeholder="Masukkan lokasi"
-                />
-              </div>
-              <div className="space-y-2">
                 <Label>Jenis Pekerjaan</Label>
                 <Input
                   value={editedData.work_type}
@@ -156,38 +246,51 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate }) => {
                 />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Jumlah Termin</Label>
-              <Input
-                type="number"
-                min="1"
-                max="16"
-                value={editedData.termin_count === '' ? '' : (editedData.termin_count || 1)}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  if (value === '') {
-                    handleInputChange('termin_count', '');
-                  } else {
-                    const num = parseInt(value);
-                    if (!isNaN(num)) {
-                      handleInputChange('termin_count', num);
-                    }
-                  }
-                }}
-                onBlur={(e) => {
-                  if (e.target.value === '') {
-                    handleInputChange('termin_count', '');
-                  }
-                }}
-                onFocus={(e) => e.target.select()}
-                placeholder="1"
-              />
-              <p className="text-sm text-muted-foreground">
-                Setiap termin: {(100 / (editedData.termin_count || 1)).toFixed(1)}%
-              </p>
-            </div>
+            {editedData.document_type !== 'PADI_UMKM' && (
+              <div className="space-y-2">
+                <Label>Jumlah Termin</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    min="1"
+                    max="16"
+                    value={tempTerminCount}
+                    onChange={(e) => setTempTerminCount(e.target.value)}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      const num = parseInt(tempTerminCount);
+                      if (!isNaN(num) && num >= 1 && num <= 16) {
+                        handleInputChange('termin_count', num);
+                      }
+                    }}
+                  >
+                    Update
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Setiap termin: {(100 / (editedData.termin_count || 1)).toFixed(1)}%
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
+
+        {/* Termin Preview */}
+        {editedData.document_type !== 'PADI_UMKM' && (
+          <TerminPreview
+            terminCount={editedData.termin_count || 1}
+            initialValues={editedData.payment_terms}
+            onChange={setPaymentTerms}
+            onValidationChange={(isValid) => {
+              setIsTerminValid(isValid);
+            }}
+          />
+        )}
 
         {/* Work Activities */}
         <Card>
@@ -195,27 +298,26 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate }) => {
             <CardTitle>Pasal 2</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {editedData.work_activities.map((activity, index) => (
-              <div key={index} className="flex gap-2 items-start">
-                <div className="flex-1 space-y-2">
-                  <Label>Poin 2.{index + 1}</Label>
-                  <Textarea
-                    value={activity}
-                    onChange={(e) => handleActivityChange(index, e.target.value)}
-                    rows={2}
-                    className="resize-none"
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={editedData.work_activities.map((_, index) => index)}
+                strategy={verticalListSortingStrategy}
+              >
+                {editedData.work_activities.map((activity, index) => (
+                  <SortableActivity
+                    key={index}
+                    activity={activity}
+                    index={index}
+                    onUpdate={handleActivityChange}
+                    onDelete={handleDeleteActivity}
                   />
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleDeleteActivity(index)}
-                  className="mt-6"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            ))}
+                ))}
+              </SortableContext>
+            </DndContext>
             <Button
               variant="outline"
               className="w-full"

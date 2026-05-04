@@ -8,12 +8,14 @@ interface TerminPreviewProps {
   terminCount: number;
   initialValues?: Record<string, string>;
   onChange: (payment_terms: Record<string, string>) => void;
+  onValidationChange?: (isValid: boolean) => void;
 }
 
 export const TerminPreview: React.FC<TerminPreviewProps> = ({
   terminCount,
   initialValues,
-  onChange
+  onChange,
+  onValidationChange
 }) => {
   const [percentages, setPercentages] = useState<(number | string)[]>(() => {
     if (initialValues) {
@@ -27,7 +29,38 @@ export const TerminPreview: React.FC<TerminPreviewProps> = ({
     return Array(terminCount).fill(100 / terminCount);
   });
 
+  // Reset percentages when terminCount changes
   useEffect(() => {
+    if (initialValues) {
+      const values = [];
+      for (let i = 1; i <= terminCount; i++) {
+        const key = `termin_${i}_percent`;
+        values.push(parseFloat(initialValues[key]) || (100 / terminCount));
+      }
+      setPercentages(values);
+    } else {
+      setPercentages(Array(terminCount).fill(100 / terminCount));
+    }
+  }, [terminCount, initialValues]);
+
+  // Sync to parent only when percentages change (not on mount/terminCount change)
+  const isInitialMount = React.useRef(true);
+  const prevTerminCountRef = React.useRef(terminCount);
+
+  useEffect(() => {
+    // Skip on initial mount or when terminCount just changed
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      prevTerminCountRef.current = terminCount;
+      return;
+    }
+
+    // Skip if terminCount just changed
+    if (prevTerminCountRef.current !== terminCount) {
+      prevTerminCountRef.current = terminCount;
+      return;
+    }
+
     const payment_terms: Record<string, string> = {};
     for (let i = 0; i < terminCount; i++) {
       const value = percentages[i];
@@ -49,6 +82,13 @@ export const TerminPreview: React.FC<TerminPreviewProps> = ({
   }, 0);
 
   const isOverLimit = totalPercentage > 100;
+  const isUnderLimit = totalPercentage < 100;
+  const isValid = totalPercentage === 100;
+
+  // Notify parent of validation changes
+  useEffect(() => {
+    onValidationChange?.(isValid);
+  }, [totalPercentage, onValidationChange, isValid]);
 
   return (
     <Card>
@@ -56,10 +96,11 @@ export const TerminPreview: React.FC<TerminPreviewProps> = ({
         <CardTitle>Preview Termin Pembayaran</CardTitle>
         <div className={cn(
           "text-sm font-medium",
-          isOverLimit ? "text-destructive" : "text-muted-foreground"
+          isOverLimit || isUnderLimit ? "text-destructive" : "text-muted-foreground"
         )}>
           Total: {totalPercentage.toFixed(2)}%
           {isOverLimit && " (melebihi 100%)"}
+          {isUnderLimit && " (kurang dari 100%)"}
         </div>
       </CardHeader>
       <CardContent>

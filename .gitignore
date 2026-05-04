@@ -1,5 +1,6 @@
 docs
 output
+output_test
 extracted
 venv
 .env
@@ -31,3 +32,6 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+
+
+.claude

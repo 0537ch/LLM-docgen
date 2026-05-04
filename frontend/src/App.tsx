@@ -7,12 +7,22 @@ import { Progress } from './components/ui/progress';
 import { Button } from './components/ui/button';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { cn } from './lib/utils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from './components/ui/alert-dialog';
 
 type Step = 1 | 2 | 3;
 
 function App() {
   const [step, setStep] = useState<Step>(1);
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
   const handleUploadComplete = (response: UploadResponse) => {
     setExtractedData(response.extracted_data);
@@ -67,7 +77,6 @@ function App() {
 
             {step === 2 && extractedData && (
               <ReviewStep
-                key={extractedData.project_name}
                 data={extractedData}
                 onUpdate={setExtractedData}
               />
@@ -101,23 +110,30 @@ function App() {
                   );
 
                   if (!validItems) {
-                    alert('Mohon lengkapi semua field wajib (No, Uraian, Volume, Satuan)');
+                    setAlertMessage('Mohon lengkapi semua field wajib (No, Uraian, Volume, Satuan)');
                     return;
                   }
 
-                  const terminCount = extractedData.termin_count || 1;
-                  const equalSplit = parseFloat((100 / terminCount).toFixed(2));
-                  const payment_terms: Record<string, string> = {};
-
-                  for (let i = 1; i <= terminCount; i++) {
-                    payment_terms[`termin_${i}_percent`] = equalSplit.toString();
+                  // Check validation errors
+                  if (extractedData.validation_errors && extractedData.validation_errors.length > 0) {
+                    setAlertMessage('Mohon perbaiki error berikut:\n' + extractedData.validation_errors.join('\n'));
+                    return;
                   }
 
-                  const updatedData = {
-                    ...extractedData,
-                    payment_terms
-                  };
-                  setExtractedData(updatedData);
+                  // Validate termin percentage totals to 100%
+                  if (extractedData.document_type !== 'PADI_UMKM' && extractedData.payment_terms) {
+                    const totalPercent = Object.entries(extractedData.payment_terms).reduce((sum, [key, value]) => {
+                      if (key.startsWith('termin_') && key.endsWith('_percent')) {
+                        return sum + (parseFloat(value) || 0);
+                      }
+                      return sum;
+                    }, 0);
+                    if (totalPercent !== 100) {
+                      setAlertMessage(`Total persentase termin harus 100%. Saat ini: ${totalPercent.toFixed(2)}%`);
+                      return;
+                    }
+                  }
+
                   setStep(3);
                 }}
                 size="lg"
@@ -141,6 +157,19 @@ function App() {
           )}
         </div>
       </footer>
+
+      {/* Alert Dialog */}
+      <AlertDialog open={!!alertMessage} onOpenChange={() => setAlertMessage(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Peringatan</AlertDialogTitle>
+            <AlertDialogDescription>{alertMessage}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setAlertMessage(null)}>OK</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -102,7 +102,7 @@ export const UploadStep: React.FC<UploadStepProps> = ({ onNext }) => {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Upload className="w-5 h-5" />
-              Upload LHP Document
+              Upload Laporan Hasil Pemeriksaan 
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -152,31 +152,60 @@ export const UploadStep: React.FC<UploadStepProps> = ({ onNext }) => {
 
             {/* Progress */}
             {loading && progress && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-600">{progress.message}</span>
-                  <span className="font-medium">{getProgressPercentage()}%</span>
+              <div className="space-y-4">
+                {/* OCR Progress Bar */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-600">
+                      {progress.phase === 'ai' ? (
+                        <span className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-green-600" />
+                          OCR Processing Complete
+                        </span>
+                      ) : (
+                        progress.message
+                      )}
+                    </span>
+                    <span className="font-medium">
+                      {progress.phase === 'ai' ? '100%' : `${getProgressPercentage()}%`}
+                    </span>
+                  </div>
+                  <Progress
+                    value={progress.phase === 'ai' ? 100 : getProgressPercentage()}
+                    className={progress.phase === 'ai' ? 'h-2' : 'h-2'}
+                  />
                 </div>
-                <Progress value={getProgressPercentage()} className="h-2" />
+
+                {/* AI Progress Bar (only during AI phase) */}
+                {progress.phase === 'ai' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-600 flex items-center gap-2">
+                        <Brain className="w-4 h-4 animate-pulse" />
+                        Extracting data with AI...
+                      </span>
+                      <span className="font-medium">
+                        {progress.ai_progress || 0}%
+                      </span>
+                    </div>
+                    <Progress value={progress.ai_progress || 0} className="h-2" />
+
+                    {/* AI Streaming Display */}
+                    {progress.ai_text && (
+                      <div className="bg-slate-950 text-slate-50 rounded-lg p-4 max-h-[40vh] overflow-y-auto">
+                        <pre className="text-xs font-mono whitespace-pre-wrap break-words">
+                          {progress.ai_text}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Completion Message */}
                 {progress.status === 'completed' && (
                   <div className="flex items-center gap-2 text-sm text-green-600">
                     <CheckCircle2 className="w-4 h-4" />
                     Extraction complete!
-                  </div>
-                )}
-
-                {/* AI Streaming Display */}
-                {progress.phase === 'ai' && progress.ai_text && (
-                  <div className="mt-4 space-y-2">
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                      <Brain className="w-4 h-4 animate-pulse" />
-                      <span className="font-medium">AI is extracting data...</span>
-                    </div>
-                    <div className="bg-slate-950 text-slate-50 rounded-lg p-4 max-h-[40vh] overflow-y-auto">
-                      <pre className="text-xs font-mono whitespace-pre-wrap break-words">
-                        {progress.ai_text}
-                      </pre>
-                    </div>
                   </div>
                 )}
               </div>

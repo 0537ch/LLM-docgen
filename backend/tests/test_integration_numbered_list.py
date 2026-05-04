@@ -14,8 +14,6 @@ def test_generate_document_with_numbered_list(tmp_path):
         "project_name": "Test Project",
         "timeline": "3 bulan",
         "work_type": "PENGADAAN",
-        "location": "Surabaya",
-        "location_details": "Gedung A",
         "scope_description": "Test scope",
         "work_activities": [
             "Melakukan instalasi server",
