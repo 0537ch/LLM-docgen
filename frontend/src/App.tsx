@@ -22,16 +22,19 @@ type Step = 1 | 2 | 3;
 function App() {
   const [step, setStep] = useState<Step>(1);
   const [extractedData, setExtractedData] = useState<ExtractedData | null>(null);
+  const [uploadResponse, setUploadResponse] = useState<UploadResponse | null>(null);
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
   const handleUploadComplete = (response: UploadResponse) => {
     setExtractedData(response.extracted_data);
+    setUploadResponse(response);
     setStep(2);
   };
 
   const handleReset = () => {
     setStep(1);
     setExtractedData(null);
+    setUploadResponse(null);
   };
 
   return (
@@ -75,9 +78,11 @@ function App() {
           <div className="rounded-lg border bg-white shadow-sm dark:bg-slate-900 dark:border-slate-800">
             {step === 1 && <UploadStep onNext={handleUploadComplete} />}
 
-            {step === 2 && extractedData && (
+            {step === 2 && extractedData && uploadResponse && (
               <ReviewStep
                 data={extractedData}
+                fileId={uploadResponse.file_id}
+                lhpText={uploadResponse.lhp_text}
                 onUpdate={setExtractedData}
               />
             )}

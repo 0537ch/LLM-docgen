@@ -4,6 +4,7 @@ export interface Item {
   volume: string | number;
   satuan: string;
   harga_satuan?: string | number;
+  jumlah_harga?: string | number;
 }
 
 export interface ExtractedData {
@@ -31,6 +32,7 @@ export interface GenerateResponse {
   files: {
     rab?: string;
     rks?: string;
+    rab_xlsx?: string;
   };
   document_type: string;
 }
@@ -43,4 +45,19 @@ export interface UploadProgress {
   phase: 'ocr' | 'ai';
   ai_text?: string;
   ai_progress?: number;  // 0-100 during AI phase
+}
+
+export interface SortableActivityProps {
+  activity: string;
+  index: number;
+  animationIndex: number;
+  onUpdate: (index: number, value: string) => void;
+  onDelete: (index: number) => void;
+}
+
+export interface ReviewStepProps {
+  data: ExtractedData;
+  fileId: string;
+  lhpText: string;
+  onUpdate: (data: ExtractedData) => void;
 }

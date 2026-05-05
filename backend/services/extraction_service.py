@@ -254,6 +254,71 @@ Generate work activities for this {doc_type} project:
             # Fallback: return basic activity
             return [f"Melakukan pekerjaan {extracted_data.get('work_type', 'tersebut')}"]
 
+    def regenerate_pasal2(
+        self,
+        lhp_text: str,
+        doc_type: str,
+        custom_prompt: Optional[str] = None,
+        jumlah_kegiatan: Optional[int] = None
+    ) -> list:
+        """Regenerate only work activities with optional custom prompt and jumlah override"""
+        from strategies.factory import StrategyFactory
+
+        strategy = StrategyFactory.create(doc_type)
+        default_examples = strategy.get_work_activity_examples()
+
+        # Build prompt
+        prompt_parts = []
+
+        if custom_prompt:
+            prompt_parts.append(f"You are an expert at writing Indonesian government procurement documents (RKS).\n\nCustom user instruction:\n{custom_prompt}")
+        else:
+            prompt_parts.append(f"""You are an expert at writing Indonesian government procurement documents (RKS - Rencana Kerja & Syarat).
+
+Generate a numbered list of detailed work activities (Pasal 2 format) for {doc_type} project.""")
+
+        prompt_parts.append(f"""
+## Reference Examples for {doc_type}:
+{default_examples}
+
+### CRITICAL INSTRUCTIONS:
+- Follow the pattern above
+- Group related items into broader activities
+- Include purpose/context in each activity
+- Use specific locations when mentioned
+- Return ONLY valid JSON array of strings""")
+
+        if jumlah_kegiatan:
+            prompt_parts.append(f"\n- Generate exactly {jumlah_kegiatan} activities")
+        else:
+            prompt_parts.append(f"\n- Generate 2-6 activities")
+
+        prompt_parts.append(f"\n## LHP Text:\n{lhp_text[:12000]}")
+
+        prompt = "\n".join(prompt_parts)
+
+        try:
+            result = self._call_gemini(prompt, stream=False)
+
+            # Parse JSON from response
+            import json
+            if "```json" in result:
+                result = result.split("```json")[1].split("```")[0].strip()
+            elif "```" in result:
+                result = result.split("```")[1].split("```")[0].strip()
+
+            activities = json.loads(result)
+
+            if not isinstance(activities, list):
+                raise ValueError("Activities must be a list")
+
+            logger.info(f"Regenerated {len(activities)} work activities")
+            return activities
+
+        except Exception as e:
+            logger.error(f"Failed to regenerate work activities: {e}")
+            raise
+
     def _format_items_for_prompt(self, items: list) -> str:
         """Format items for prompt"""
         if not items:

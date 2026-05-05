@@ -52,8 +52,8 @@ class DOCXService:
                     logger.info(f"Found placeholder '{placeholder}'")
                     break
 
-        # Create table using python-docx API
-        table = doc.add_table(rows=1, cols=5)
+        # Create table using python-docx API (6 columns: NO, URAIAN, VOLUME, SATUAN, HARGA SATUAN, JUMLAH HARGA)
+        table = doc.add_table(rows=1, cols=6)
         table.style = 'Table Grid'
 
         # Set table width to auto for autofit to CONTENT (not page width)
@@ -71,7 +71,7 @@ class DOCXService:
             column.width = None
 
         # Add headers
-        headers = ['NO', 'URAIAN', 'VOLUME', 'SATUAN', 'HARGA SATUAN']
+        headers = ['NO', 'URAIAN', 'VOLUME', 'SATUAN', 'HARGA SATUAN', 'JUMLAH HARGA']
         header_cells = table.rows[0].cells
         for i, header in enumerate(headers):
             header_cells[i].text = header
@@ -110,10 +110,26 @@ class DOCXService:
 
             # HARGA SATUAN
             harga = item.get('harga_satuan', item.get('price', item.get('Harga', item.get('HARGA', ''))))
-            harga_text = str(harga) if harga else '-'
+            try:
+                harga_val = float(harga) if harga else 0
+                harga_text = f"Rp {int(harga_val):,}".replace(',', '.') if harga_val > 0 else '-'
+            except (ValueError, TypeError):
+                harga_text = str(harga) if harga else '-'
             row_cells[4].text = harga_text
             row_cells[4].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
             row_cells[4].paragraphs[0].paragraph_format.line_spacing = 1.0
+
+            # JUMLAH HARGA (volume * harga_satuan)
+            try:
+                vol = float(item.get('volume', 0)) if item.get('volume') else 0
+                sat = float(item.get('harga_satuan', 0)) if item.get('harga_satuan') else 0
+                jumlah = vol * sat
+                jumlah_text = f"Rp {int(jumlah):,}".replace(',', '.') if jumlah > 0 else '-'
+            except (ValueError, TypeError):
+                jumlah_text = '-'
+            row_cells[5].text = jumlah_text
+            row_cells[5].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+            row_cells[5].paragraphs[0].paragraph_format.line_spacing = 1.0
 
         # Move table to placeholder position if specified
         if placeholder_paragraph:
@@ -234,10 +250,10 @@ class DOCXService:
         total = 0
         for row in table.rows[1:]:  # Skip header row
             try:
-                # Jumlah Harga is in column 4 (0-indexed)
-                jumlah_text = row.cells[4].text.strip()
+                # Jumlah Harga is in column 5 (0-indexed), after NO|URAIAN|VOLUME|SATUAN|HARGA SATUAN|JUMLAH HARGA
+                jumlah_text = row.cells[5].text.strip()
                 if jumlah_text and jumlah_text != '-':
-                    # Remove non-numeric characters (dots, commas, etc)
+                    # Remove non-numeric characters (dots, commas, spaces, 'Rp', etc)
                     jumlah_clean = ''.join(c for c in jumlah_text if c.isdigit())
                     if jumlah_clean:
                         total += int(jumlah_clean)
@@ -248,32 +264,32 @@ class DOCXService:
         ppn = int(total * ppn_percent / 100)
         grand_total = total + ppn
 
-        # Add Total row
+        # Add Total row (merge cells 0-4, place total in cell 5)
         total_row = table.add_row()
-        total_row.cells[0].merge(total_row.cells[3])  # Merge first 4 cells
+        total_row.cells[0].merge(total_row.cells[4])  # Merge first 5 cells (NO through HARGA SATUAN)
         total_row.cells[0].text = "Total"
         total_row.cells[0].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
         total_row.cells[0].paragraphs[0].runs[0].bold = True
-        total_row.cells[4].text = f"Rp {total:,}".replace(',', '.')
-        total_row.cells[4].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+        total_row.cells[5].text = f"Rp {total:,}".replace(',', '.')
+        total_row.cells[5].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
 
         # Add PPN row
         ppn_row = table.add_row()
-        ppn_row.cells[0].merge(ppn_row.cells[3])
+        ppn_row.cells[0].merge(ppn_row.cells[4])
         ppn_row.cells[0].text = f"PPN ({ppn_percent}%)"
         ppn_row.cells[0].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
         ppn_row.cells[0].paragraphs[0].runs[0].bold = True
-        ppn_row.cells[4].text = f"Rp {ppn:,}".replace(',', '.')
-        ppn_row.cells[4].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+        ppn_row.cells[5].text = f"Rp {ppn:,}".replace(',', '.')
+        ppn_row.cells[5].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
 
         # Add Grand Total row
         grand_row = table.add_row()
-        grand_row.cells[0].merge(grand_row.cells[3])
+        grand_row.cells[0].merge(grand_row.cells[4])
         grand_row.cells[0].text = "Grand Total"
         grand_row.cells[0].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
         grand_row.cells[0].paragraphs[0].runs[0].bold = True
-        grand_row.cells[4].text = f"Rp {grand_total:,}".replace(',', '.')
-        grand_row.cells[4].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+        grand_row.cells[5].text = f"Rp {grand_total:,}".replace(',', '.')
+        grand_row.cells[5].paragraphs[0].alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
 
         logger.info(f"Added summary: Total={total}, PPN={ppn}, Grand Total={grand_total}")
 

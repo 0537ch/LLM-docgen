@@ -18,3 +18,4 @@ Pillow
 
 # Utilities
 python-dotenv
+openpyxl>=3.1.0

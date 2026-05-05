@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { ExtractedData, Item } from '../types';
+import type { ExtractedData, Item, SortableActivityProps, ReviewStepProps } from '../types';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Input } from './ui/input';
@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Plus, Trash2, Package, GripVertical } from 'lucide-react';
 import { TerminPreview } from './TerminPreview';
+import { Pasal2Drawer } from './Pasal2Drawer';
+import { apiService } from '../services/api';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -22,31 +24,31 @@ function arrayMove<T>(array: T[], from: number, to: number): T[] {
 }
 
 
-interface SortableActivityProps {
-  activity: string;
-  index: number;
-  onUpdate: (index: number, value: string) => void;
-  onDelete: (index: number) => void;
-}
-
-function SortableActivity({ activity, index, onUpdate, onDelete }: SortableActivityProps) {
+function SortableActivity({ activity, index, animationIndex, onUpdate, onDelete }: SortableActivityProps) {
   const {
     attributes,
     listeners,
     setNodeRef,
     transform,
-    transition,
     isDragging,
   } = useSortable({ id: index });
 
+  const isNew = animationIndex !== -1 && index < animationIndex;
+  const delay = isNew ? index * 60 : 0;
+
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition,
+    transition: isDragging ? undefined : 'opacity 0.4s ease-out, transform 0.4s ease-out',
     opacity: isDragging ? 0.5 : 1,
+    animationDelay: isNew ? `${delay}ms` : '0ms',
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="flex gap-2 items-start">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex gap-2 items-start ${isNew ? 'animate-slide-in' : ''}`}
+    >
       {/* Drag handle */}
       <div
         {...attributes}
@@ -55,7 +57,7 @@ function SortableActivity({ activity, index, onUpdate, onDelete }: SortableActiv
       >
         <GripVertical className="w-6 h-6 text-blue-600" />
       </div>
-      
+
 
       {/* Activity input */}
       <div className="flex-1 space-y-2">
@@ -81,12 +83,7 @@ function SortableActivity({ activity, index, onUpdate, onDelete }: SortableActiv
   );
 }
 
-interface ReviewStepProps {
-  data: ExtractedData;
-  onUpdate: (data: ExtractedData) => void;
-}
-
-export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate }) => {
+export const ReviewStep: React.FC<ReviewStepProps> = ({ data, fileId, lhpText, onUpdate }) => {
   const [editedData, setEditedData] = useState<ExtractedData>({
     ...data,
     termin_count: data.termin_count || 1
@@ -94,6 +91,11 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate }) => {
   const [paymentTerms, setPaymentTerms] = useState<Record<string, string>>(data.payment_terms || {});
   const [tempTerminCount, setTempTerminCount] = useState<string>(String(data.termin_count || 1));
   const [isTerminValid, setIsTerminValid] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [customPasal2Prompt, setCustomPasal2Prompt] = useState('');
+  const [jumlahKegiatan, setJumlahKegiatan] = useState<number | undefined>(undefined);
+  const [regenerating, setRegenerating] = useState(false);
+  const [animationIndex, setAnimationIndex] = useState<number>(-1);
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -157,6 +159,37 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate }) => {
       ...prev,
       work_activities: [...prev.work_activities, '']
     }));
+  };
+
+  const handleRegeneratePasal2 = async () => {
+    if (!fileId) return;
+    setRegenerating(true);
+    try {
+      const result = await apiService.regeneratePasal2({
+        file_id: fileId,
+        lhp_text: lhpText,
+        document_type: editedData.document_type,
+        custom_pasal2_prompt: customPasal2Prompt || undefined,
+        jumlah_kegiatan: jumlahKegiatan,
+      });
+      setEditedData((prev) => ({
+        ...prev,
+        work_activities: result.work_activities,
+      }));
+      // Close drawer first, then animate after it's hidden
+      setDrawerOpen(false);
+      setTimeout(() => {
+        setAnimationIndex(result.work_activities.length);
+        setTimeout(() => setAnimationIndex(-1), 1000);
+      }, 300);
+      setCustomPasal2Prompt('');
+      setJumlahKegiatan(undefined);
+    } catch (error) {
+      console.error('Failed to regenerate Pasal 2:', error);
+      alert('Gagal regenerate Pasal 2. Silakan coba lagi.');
+    } finally {
+      setRegenerating(false);
+    }
   };
 
   const handleDeleteItem = (index: number) => {
@@ -295,7 +328,19 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate }) => {
         {/* Work Activities */}
         <Card>
           <CardHeader>
-            <CardTitle>Pasal 2</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Pasal 2</CardTitle>
+              <Pasal2Drawer
+                open={drawerOpen}
+                onOpenChange={setDrawerOpen}
+                customPasal2Prompt={customPasal2Prompt}
+                jumlahKegiatan={jumlahKegiatan}
+                onCustomPromptChange={setCustomPasal2Prompt}
+                onJumlahChange={setJumlahKegiatan}
+                onRegenerate={handleRegeneratePasal2}
+                isLoading={regenerating}
+              />
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             <DndContext
@@ -312,6 +357,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate }) => {
                     key={index}
                     activity={activity}
                     index={index}
+                    animationIndex={animationIndex}
                     onUpdate={handleActivityChange}
                     onDelete={handleDeleteActivity}
                   />
@@ -347,6 +393,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate }) => {
                   <TableHead className="w-32">Volume</TableHead>
                   <TableHead className="w-32">Satuan</TableHead>
                   <TableHead className="w-32">Harga Satuan</TableHead>
+                  <TableHead className="w-40">Jumlah Harga</TableHead>
                   <TableHead className="w-16">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
@@ -355,9 +402,12 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate }) => {
                   <TableRow key={item.no}>
                     <TableCell>
                       <Input
-                        type="text"
+                        type="number"
                         value={item.no}
-                        onChange={(e) => handleItemChange(index, 'no', e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^0-9]/g, '');
+                          handleItemChange(index, 'no', val);
+                        }}
                       />
                     </TableCell>
                     <TableCell>
@@ -371,7 +421,10 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate }) => {
                       <Input
                         type="number"
                         value={item.volume}
-                        onChange={(e) => handleItemChange(index, 'volume', e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^0-9.]/g, '');
+                          handleItemChange(index, 'volume', val);
+                        }}
                         placeholder="0"
                       />
                     </TableCell>
@@ -382,12 +435,28 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, onUpdate }) => {
                         placeholder="Unit"
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">Rp</span>
                       <Input
+                        className="pl-8"
+                        type="number"
                         value={item.harga_satuan || ''}
-                        onChange={(e) => handleItemChange(index, 'harga_satuan', e.target.value)}
-                        placeholder="Opsional"
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^0-9]/g, '');
+                          handleItemChange(index, 'harga_satuan', val);
+                        }}
+                        onKeyDown={(e) => {
+                          if (!/[0-9]/.test(e.key) && !['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Home','End'].includes(e.key)) {
+                            e.preventDefault();
+                          }
+                        }}
+                        placeholder="0"
                       />
+                    </TableCell>
+                    <TableCell className="bg-muted/50">
+                      {item.volume && item.harga_satuan
+                        ? (Number(item.volume) * Number(item.harga_satuan)).toLocaleString('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 })
+                        : '-'}
                     </TableCell>
                     <TableCell>
                       <Button

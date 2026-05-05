@@ -85,6 +85,17 @@ export const apiService = {
     const response = await api.get('/health');
     return response.data;
   },
+
+  async regeneratePasal2(data: {
+    file_id: string;
+    lhp_text: string;
+    document_type: string;
+    custom_pasal2_prompt?: string;
+    jumlah_kegiatan?: number;
+  }): Promise<{ work_activities: string[] }> {
+    const response = await api.post<{ work_activities: string[] }>('/api/regenerate-pasal2', data);
+    return response.data;
+  },
 };
 
 export default apiService;

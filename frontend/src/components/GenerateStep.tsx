@@ -4,7 +4,34 @@ import type { ExtractedData } from '../types';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
-import { Download, FileText, CheckCircle2, RefreshCw, Loader2 } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import { CheckCircle2, RefreshCw, Loader2, FileText, Download } from 'lucide-react';
+
+// number_to_terbilang - duplicated from backend/excel_service.py
+function numberToTerbilang(number: number): string {
+  if (number === 0) return 'nol rupiah';
+
+  const units = ['', 'satu', 'dua', 'tiga', 'empat', 'lima', 'enam', 'tujuh', 'delapan', 'sembilan'];
+  const teens = ['sepuluh', 'sebelas', 'dua belas', 'tiga belas', 'empat belas', 'lima belas', 'enam belas', 'tujuh belas', 'delapan belas', 'sembilan belas'];
+
+  function convertChunk(n: number): string {
+    if (n < 10) return units[n];
+    if (n < 20) return teens[n - 10];
+    if (n < 100) {
+      const tensChars = ['', '', 'dua puluh', 'tiga puluh', 'empat puluh', 'lima puluh', 'enam puluh', 'tujuh puluh', 'delapan puluh', 'sembilan puluh'];
+      return tensChars[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + units[n % 10] : '');
+    }
+    if (n === 100) return 'seratus';
+    if (n < 1000) return units[Math.floor(n / 100)] + ' ratus' + (n % 100 !== 0 ? ' ' + convertChunk(n % 100) : '');
+    if (n === 1000) return 'seribu';
+    if (n < 1000000) return convertChunk(Math.floor(n / 1000)) + ' ribu' + (n % 1000 !== 0 ? ' ' + convertChunk(n % 1000) : '');
+    if (n === 1000000) return 'sejuta';
+    if (n < 1000000000) return convertChunk(Math.floor(n / 1000000)) + ' juta' + (n % 1000000 !== 0 ? ' ' + convertChunk(n % 1000000) : '');
+    return convertChunk(Math.floor(n / 1000000000)) + ' miliar' + (n % 1000000000 !== 0 ? ' ' + convertChunk(n % 1000000000) : '');
+  }
+
+  return convertChunk(Math.floor(number)) + ' rupiah';
+}
 
 interface GenerateStepProps {
   data: ExtractedData;
@@ -16,17 +43,17 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({ data }) => {
   const [generatedFiles, setGeneratedFiles] = useState<{
     rab?: string;
     rks?: string;
+    rab_xlsx?: string;
   } | null>(null);
 
-  // Preview state
+  // Preview state (RKS only now)
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [rabHtml, setRabHtml] = useState<string | null>(null);
   const [rksHtml, setRksHtml] = useState<string | null>(null);
 
   const rksPreviewHtml = rksHtml ? `<style>p strong{text-align:center!important}p{text-align:justify!important}ol{text-align:left!important}</style>${rksHtml}` : '';
 
-  // Load preview on mount
+  // Load preview on mount (RKS only)
   useEffect(() => {
     const fetchPreview = async () => {
       setPreviewLoading(true);
@@ -34,7 +61,6 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({ data }) => {
 
       try {
         const result = await apiService.previewDocuments(data);
-        setRabHtml(result.rab);
         setRksHtml(result.rks);
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : 'Preview failed';
@@ -45,6 +71,15 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({ data }) => {
     };
     fetchPreview();
   }, [data]);
+
+  // Calculate RAB totals
+  const rabTotal = data.items.reduce((sum, item) => {
+    const vol = parseFloat(String(item.volume)) || 0;
+    const harga = parseFloat(String(item.harga_satuan)) || 0;
+    return sum + (vol * harga);
+  }, 0);
+  const rabPPN = Math.round(rabTotal * 0.11);
+  const rabGrandTotal = rabTotal + rabPPN;
 
   const handleGenerate = async () => {
     setLoading(true);
@@ -93,25 +128,51 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({ data }) => {
               </TabsList>
 
               <TabsContent value="rab">
-                <div className="bg-slate-50 rounded-lg p-4 min-h-[400px] max-h-[60vh] overflow-y-auto">
-                  {previewLoading ? (
-                    <div className="flex items-center justify-center h-[400px]">
-                      <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
-                    </div>
-                  ) : previewError ? (
-                    <div className="flex flex-col items-center justify-center h-[400px] gap-4">
-                      <p className="text-destructive">{previewError}</p>
-                      <Button variant="outline" onClick={() => window.location.reload()}>
-                        <RefreshCw className="w-4 h-4 mr-2" />
-                        Retry Preview
-                      </Button>
-                    </div>
-                  ) : (
-                    <div
-                      className="bg-white p-6 shadow-md rounded font-serif text-sm [&_p]:text-center [&_strong]:text-center [&_td]:border [&_td]:border-slate-300 [&_td]:p-2 [&_th]:border [&_th]:border-slate-300 [&_th]:p-2 [&_th]:bg-slate-100"
-                      dangerouslySetInnerHTML={{ __html: rabHtml || '' }}
-                    />
-                  )}
+                <div className="bg-white rounded-lg border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-center">NO</TableHead>
+                        <TableHead>URAIAN</TableHead>
+                        <TableHead className="text-center">VOLUME</TableHead>
+                        <TableHead className="text-center">SATUAN</TableHead>
+                        <TableHead className="text-right">HARGA SATUAN</TableHead>
+                        <TableHead className="text-right">JUMLAH HARGA</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.items.map((item, idx) => {
+                        const vol = parseFloat(String(item.volume)) || 0;
+                        const harga = parseFloat(String(item.harga_satuan)) || 0;
+                        const jumlah = vol * harga;
+                        return (
+                          <TableRow key={idx}>
+                            <TableCell className="text-center">{idx + 1}</TableCell>
+                            <TableCell>{item.uraian || '-'}</TableCell>
+                            <TableCell className="text-center">{item.volume || '-'}</TableCell>
+                            <TableCell className="text-center">{item.satuan || '-'}</TableCell>
+                            <TableCell className="text-right">Rp {harga.toLocaleString('id-ID')}</TableCell>
+                            <TableCell className="text-right">Rp {jumlah.toLocaleString('id-ID')}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                      <TableRow className="font-medium">
+                        <TableCell rowSpan={3} colSpan={4} className="text-left align-top">
+                          Terbilang:<br />{numberToTerbilang(rabGrandTotal)}
+                        </TableCell>
+                        <TableCell colSpan={1} className="text-right">Total</TableCell>
+                        <TableCell colSpan={1} className="text-right">Rp {rabTotal.toLocaleString('id-ID')}</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell colSpan={1} className="text-right">PPN (11%)</TableCell>
+                        <TableCell colSpan={1} className="text-right">Rp {rabPPN.toLocaleString('id-ID')}</TableCell>
+                      </TableRow>
+                      <TableRow className="font-bold">
+                        <TableCell colSpan={1} className="text-right">Grand Total</TableCell>
+                        <TableCell colSpan={1} className="text-right">Rp {rabGrandTotal.toLocaleString('id-ID')}</TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
                 </div>
               </TabsContent>
 
@@ -184,13 +245,14 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({ data }) => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {generatedFiles.rab && (
+              {/* RAB XLSX only (DOCX commented out) */}
+              {generatedFiles.rab_xlsx && (
                 <div className="flex items-center gap-3 p-3 border rounded-lg">
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm">RAB Document</p>
-                    <p className="text-xs text-slate-500 truncate">{generatedFiles.rab}</p>
+                    <p className="text-xs text-slate-500 truncate">{generatedFiles.rab_xlsx}</p>
                   </div>
-                  <Button onClick={() => handleDownload(generatedFiles.rab!)} size="sm" className="flex-shrink-0">
+                  <Button onClick={() => handleDownload(generatedFiles.rab_xlsx!)} size="sm" className="flex-shrink-0">
                     <Download className="w-4 h-4 mr-2" />
                     Download
                   </Button>

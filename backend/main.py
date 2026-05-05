@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response
+from pydantic import BaseModel
 from pathlib import Path
 from typing import Optional
 import shutil
@@ -16,6 +17,7 @@ from utils.config import Config
 from utils.logger import setup_logger
 from utils.progress import progress_manager
 from strategies import StrategyFactory
+from services.excel_service import ExcelService
 
 logger = setup_logger("api")
 
@@ -41,6 +43,7 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Store results in memory (in production, use Redis or database)
 _extraction_results: dict = {}
+_regenerating_files: set = set()  # Track files currently being regenerated
 
 
 
@@ -324,28 +327,41 @@ async def generate_documents(data: dict):
         docx_service = DOCXService()
         generated_files = {}
 
-        # Generate RAB
+        # Generate RAB DOCX (commented out - boss says XLSX sufficient)
+        # try:
+        #     rab_base = strategy.get_template_name("RAB")
+        #     rab_doc = docx_service.load_template(rab_base, "RAB")
+        #
+        #     # Add items table
+        #     items_with_numbers = [{**item, 'NO': i} for i, item in enumerate(data.get("items", []), 1)]
+        #     rab_table = docx_service.add_items_table(rab_doc, items_with_numbers, placeholder="{{items_table}}")
+        #     docx_service.add_summary_table(rab_doc, rab_table, ppn_percent=11)
+        #
+        #     # Fill template
+        #     template_data_for_rab = {k: v for k, v in template_data.items() if k != "rab_items_table"}
+        #     list_placeholders = ["work_activities", "pasal10_content"]
+        #     rab_doc = docx_service.fill_template(rab_doc, template_data_for_rab, list_placeholders=list_placeholders)
+        #
+        #     rab_path = OUTPUT_DIR / f"RAB_{data.get('project_name', 'project').replace(' ', '_')}_{uuid.uuid4().hex[:8]}.docx"
+        #     docx_service.save_document(rab_doc, str(rab_path))
+        #     generated_files["rab"] = rab_path.name
+        #
+        #     logger.info(f"Generated RAB: {rab_path}")
+        # except FileNotFoundError as e:
+        #     logger.warning(f"RAB template not found: {e}")
+
+        # Generate RAB XLSX
         try:
-            rab_base = strategy.get_template_name("RAB")
-            rab_doc = docx_service.load_template(rab_base, "RAB")
-
-            # Add items table
             items_with_numbers = [{**item, 'NO': i} for i, item in enumerate(data.get("items", []), 1)]
-            rab_table = docx_service.add_items_table(rab_doc, items_with_numbers, placeholder="{{items_table}}")
-            docx_service.add_summary_table(rab_doc, rab_table, ppn_percent=11)
-
-            # Fill template
-            template_data_for_rab = {k: v for k, v in template_data.items() if k != "rab_items_table"}
-            list_placeholders = ["work_activities", "pasal10_content"]
-            rab_doc = docx_service.fill_template(rab_doc, template_data_for_rab, list_placeholders=list_placeholders)
-
-            rab_path = OUTPUT_DIR / f"RAB_{data.get('project_name', 'project').replace(' ', '_')}_{uuid.uuid4().hex[:8]}.docx"
-            docx_service.save_document(rab_doc, str(rab_path))
-            generated_files["rab"] = rab_path.name
-
-            logger.info(f"Generated RAB: {rab_path}")
-        except FileNotFoundError as e:
-            logger.warning(f"RAB template not found: {e}")
+            excel_service = ExcelService()
+            xlsx_path = OUTPUT_DIR / f"RAB_{data.get('project_name', 'project').replace(' ', '_')}_{uuid.uuid4().hex[:8]}.xlsx"
+            wb = excel_service.create_workbook()
+            excel_service.add_items_table(wb, items_with_numbers)
+            excel_service.save_workbook(wb, str(xlsx_path))
+            generated_files["rab_xlsx"] = xlsx_path.name
+            logger.info(f"Generated RAB XLSX: {xlsx_path}")
+        except Exception as e:
+            logger.error(f"XLSX generation error: {e}")
 
         # Generate RKS
         try:
@@ -403,6 +419,38 @@ async def get_document_types():
         "document_types": Config.DOC_TYPES,
         "default": "PENGADAAN"
     }
+
+
+class RegeneratePasal2Request(BaseModel):
+    file_id: str
+    lhp_text: str
+    document_type: str
+    custom_pasal2_prompt: Optional[str] = None
+    jumlah_kegiatan: Optional[int] = None
+
+
+@app.post("/api/regenerate-pasal2")
+async def regenerate_pasal2(data: RegeneratePasal2Request):
+    """Regenerate only Pasal 2 (work activities) section"""
+    # Idempotency: prevent double request
+    if data.file_id in _regenerating_files:
+        raise HTTPException(status_code=409, detail="Regeneration already in progress")
+
+    try:
+        _regenerating_files.add(data.file_id)
+        extraction_service = ExtractionService()
+        work_activities = extraction_service.regenerate_pasal2(
+            lhp_text=data.lhp_text,
+            doc_type=data.document_type,
+            custom_prompt=data.custom_pasal2_prompt,
+            jumlah_kegiatan=data.jumlah_kegiatan
+        )
+        return {"work_activities": work_activities}
+    except Exception as e:
+        logger.error(f"Regenerate Pasal 2 error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        _regenerating_files.discard(data.file_id)
 
 
 if __name__ == "__main__":
