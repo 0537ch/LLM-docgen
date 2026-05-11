@@ -6,9 +6,7 @@ uvicorn
 python-multipart
 
 # PDF processing
-PyPDF2
 pdf2image
-pdf2docx
 
 # OCR (EasyOCR)
 easyocr
@@ -19,3 +17,4 @@ Pillow
 # Utilities
 python-dotenv
 openpyxl>=3.1.0
+beautifulsoup4

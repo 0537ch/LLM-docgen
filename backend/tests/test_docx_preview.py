@@ -73,35 +73,7 @@ def test_docx_to_html_conversion():
     if payment_content:
         template_data["pasal10_content"] = payment_content
 
-    # Load and fill RAB template
-    rab_base = strategy.get_template_name("RAB")
-    rab_doc = docx_service.load_template(rab_base, "RAB")
-
-    # Add items table
-    items_with_numbers = [{**item, 'NO': i} for i, item in enumerate(MOCK_DATA.get("items", []), 1)]
-    rab_table = docx_service.add_items_table(rab_doc, items_with_numbers, placeholder="{{items_table}}")
-    docx_service.add_summary_table(rab_doc, rab_table, ppn_percent=11)
-
-    # Fill template
     list_placeholders = ["work_activities", "pasal10_content"]
-    rab_doc = docx_service.fill_template(rab_doc, template_data, list_placeholders=list_placeholders)
-
-    # Save to docx first
-    docx_output = OUTPUT_TEST_DIR / "preview_test_rab.docx"
-    docx_service.save_document(rab_doc, str(docx_output))
-    print(f"\nDOCX saved: {docx_output}")
-
-    # Convert to HTML using mammoth
-    with open(docx_output, 'rb') as docx_file:
-        result = convert_to_html(docx_file)
-
-    html_output = OUTPUT_TEST_DIR / "preview_test_rab.html"
-    with open(html_output, 'w', encoding='utf-8') as html_file:
-        html_file.write(result.value)
-
-    print(f"HTML saved: {html_output}")
-    print(f"HTML size: {len(result.value)} characters")
-    print(f"Messages: {result.messages}")
 
     # Also generate RKS preview
     rks_base = strategy.get_template_name("RKS")
@@ -112,21 +84,17 @@ def test_docx_to_html_conversion():
 
     rks_doc = docx_service.fill_template(rks_doc, template_data, list_placeholders=list_placeholders)
 
-    rks_docx_output = OUTPUT_TEST_DIR / "preview_test_rks.docx"
-    docx_service.save_document(rks_doc, str(rks_docx_output))
-
-    with open(rks_docx_output, 'rb') as docx_file:
-        result = convert_to_html(docx_file)
+    # Use service method for HTML conversion (includes post-processing)
+    rks_html = docx_service.docx_to_html(rks_doc)
 
     rks_html_output = OUTPUT_TEST_DIR / "preview_test_rks.html"
     with open(rks_html_output, 'w', encoding='utf-8') as html_file:
-        html_file.write(result.value)
+        html_file.write(rks_html)
 
     print(f"\nRKS HTML saved: {rks_html_output}")
 
     print("\n=== PREVIEW GENERATED ===")
     print(f"Open in browser:")
-    print(f"  RAB: {html_output}")
     print(f"  RKS: {rks_html_output}")
 
 

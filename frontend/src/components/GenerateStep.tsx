@@ -13,24 +13,32 @@ function numberToTerbilang(number: number): string {
 
   const units = ['', 'satu', 'dua', 'tiga', 'empat', 'lima', 'enam', 'tujuh', 'delapan', 'sembilan'];
   const teens = ['sepuluh', 'sebelas', 'dua belas', 'tiga belas', 'empat belas', 'lima belas', 'enam belas', 'tujuh belas', 'delapan belas', 'sembilan belas'];
+  const tens = ['', '', 'dua puluh', 'tiga puluh', 'empat puluh', 'lima puluh', 'enam puluh', 'tujuh puluh', 'delapan puluh', 'sembilan puluh'];
 
   function convertChunk(n: number): string {
     if (n < 10) return units[n];
     if (n < 20) return teens[n - 10];
-    if (n < 100) {
-      const tensChars = ['', '', 'dua puluh', 'tiga puluh', 'empat puluh', 'lima puluh', 'enam puluh', 'tujuh puluh', 'delapan puluh', 'sembilan puluh'];
-      return tensChars[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + units[n % 10] : '');
-    }
+    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + units[n % 10] : '');
     if (n === 100) return 'seratus';
-    if (n < 1000) return units[Math.floor(n / 100)] + ' ratus' + (n % 100 !== 0 ? ' ' + convertChunk(n % 100) : '');
+    if (n < 1000) {
+      const hundreds = Math.floor(n / 100);
+      const remainder = n % 100;
+      if (hundreds === 1) {
+        return 'seratus' + (remainder !== 0 ? ' ' + convertChunk(remainder) : '');
+      }
+      return units[hundreds] + ' ratus' + (remainder !== 0 ? ' ' + convertChunk(remainder) : '');
+    }
     if (n === 1000) return 'seribu';
     if (n < 1000000) return convertChunk(Math.floor(n / 1000)) + ' ribu' + (n % 1000 !== 0 ? ' ' + convertChunk(n % 1000) : '');
     if (n === 1000000) return 'sejuta';
     if (n < 1000000000) return convertChunk(Math.floor(n / 1000000)) + ' juta' + (n % 1000000 !== 0 ? ' ' + convertChunk(n % 1000000) : '');
-    return convertChunk(Math.floor(n / 1000000000)) + ' miliar' + (n % 1000000000 !== 0 ? ' ' + convertChunk(n % 1000000000) : '');
+    const billions = Math.floor(n / 1000000000);
+    const remainder = n % 1000000000;
+    return convertChunk(billions) + ' miliar' + (remainder > 0 ? ' ' + convertChunk(remainder) : '');
   }
 
-  return convertChunk(Math.floor(number)) + ' rupiah';
+  const intNum = Math.floor(number);
+  return convertChunk(intNum) + ' rupiah';
 }
 
 interface GenerateStepProps {
@@ -51,7 +59,7 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({ data }) => {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [rksHtml, setRksHtml] = useState<string | null>(null);
 
-  const rksPreviewHtml = rksHtml ? `<style>p strong{text-align:center!important}p{text-align:justify!important}ol{text-align:left!important}</style>${rksHtml}` : '';
+  const rksPreviewHtml = rksHtml || '';
 
   // Load preview on mount (RKS only)
   useEffect(() => {
@@ -112,13 +120,12 @@ export const GenerateStep: React.FC<GenerateStepProps> = ({ data }) => {
       <div className="max-w-4xl mx-auto space-y-4">
         {/* Header */}
         <div>
-          <h2 className="text-2xl font-bold">Generate Documents</h2>
+          <h3 className="text-2xl font-bold">Preview</h3>
         </div>
 
         {/* Preview Section */}
         <Card>
           <CardHeader>
-            <CardTitle>Preview</CardTitle>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="rab">

@@ -278,7 +278,6 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, fileId, lhpText, o
                   placeholder="Masukkan jenis pekerjaan"
                 />
               </div>
-            </div>
             {editedData.document_type !== 'PADI_UMKM' && (
               <div className="space-y-2">
                 <Label>Jumlah Termin</Label>
@@ -301,7 +300,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, fileId, lhpText, o
                         handleInputChange('termin_count', num);
                       }
                     }}
-                  >
+                    >
                     Update
                   </Button>
                 </div>
@@ -310,6 +309,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({ data, fileId, lhpText, o
                 </p>
               </div>
             )}
+            </div>
           </CardContent>
         </Card>
 

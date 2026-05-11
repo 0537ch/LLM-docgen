@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Input } from './ui/input';
@@ -17,7 +17,8 @@ export const TerminPreview: React.FC<TerminPreviewProps> = ({
   onChange,
   onValidationChange
 }) => {
-  const [percentages, setPercentages] = useState<(number | string)[]>(() => {
+  // Compute base percentages from initialValues + terminCount
+  const basePercentages = useMemo(() => {
     if (initialValues) {
       const values = [];
       for (let i = 1; i <= terminCount; i++) {
@@ -27,21 +28,17 @@ export const TerminPreview: React.FC<TerminPreviewProps> = ({
       return values;
     }
     return Array(terminCount).fill(100 / terminCount);
-  });
-
-  // Reset percentages when terminCount changes
-  useEffect(() => {
-    if (initialValues) {
-      const values = [];
-      for (let i = 1; i <= terminCount; i++) {
-        const key = `termin_${i}_percent`;
-        values.push(parseFloat(initialValues[key]) || (100 / terminCount));
-      }
-      setPercentages(values);
-    } else {
-      setPercentages(Array(terminCount).fill(100 / terminCount));
-    }
   }, [terminCount, initialValues]);
+
+  // Track user edits separately
+  const [userEdits, setUserEdits] = useState<Record<number, number | string>>({});
+
+  // Merge base + user edits for display
+  const percentages = useMemo(() => {
+    return basePercentages.map((base, i) =>
+      i in userEdits ? userEdits[i] : base
+    );
+  }, [basePercentages, userEdits]);
 
   // Sync to parent only when percentages change (not on mount/terminCount change)
   const isInitialMount = React.useRef(true);
@@ -71,9 +68,7 @@ export const TerminPreview: React.FC<TerminPreviewProps> = ({
   }, [percentages, terminCount, onChange]);
 
   const handleChange = (index: number, value: string) => {
-    const updated = [...percentages];
-    updated[index] = value;
-    setPercentages(updated);
+    setUserEdits(prev => ({ ...prev, [index]: value }));
   };
 
   const totalPercentage = percentages.reduce((sum: number, p) => {

@@ -6,7 +6,6 @@ venv
 .env
 .py*
 CLAUDE.md
-templates
 __pycache__
 *.pyc
 node_modules
@@ -32,6 +31,5 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
-
 
 .claude

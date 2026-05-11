@@ -1,4 +1,10 @@
 import pytest
+import sys
+from pathlib import Path
+
+# Add backend to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from services.excel_service import ExcelService
 from openpyxl import load_workbook
 from pathlib import Path
@@ -59,11 +65,24 @@ def test_summary_rows_formulas():
 
 
 def test_generate_output_file():
-    """Generate actual XLSX file for manual inspection"""
+    """Generate actual XLSX file for manual inspection - edge cases"""
     items = [
-        {"uraian": "Paku", "volume": 5, "satuan": "kg", "harga_satuan": 15000},
-        {"uraian": "Semen", "volume": 10, "satuan": "kg", "harga_satuan": 8000},
-        {"uraian": "Pasir", "volume": 3, "satuan": "m3", "harga_satuan": 200000},
+        {"uraian": "Laptop Kerja", "volume": 10, "satuan": "Unit", "harga_satuan": 30000000},
+        {"uraian": "Monitor LED 24 inch", "volume": 10, "satuan": "Unit", "harga_satuan": 5000000},
+        {"uraian": "Keyboard Wireless", "volume": 10, "satuan": "Unit", "harga_satuan": 1000000},
+        {"uraian": "Mouse Wireless", "volume": 10, "satuan": "Unit", "harga_satuan": 600000},
+        {"uraian": "Headset Logitech", "volume": 10, "satuan": "Unit", "harga_satuan": 1600000},
+        {"uraian": "Printer Laser", "volume": 5, "satuan": "Unit", "harga_satuan": 7000000},
+        {"uraian": "UPS 1000VA", "volume": 5, "satuan": "Unit", "harga_satuan": 2400000},
+        {"uraian": "Kabel LAN Cat6 100m", "volume": 20, "satuan": "Roll", "harga_satuan": 900000},
+        {"uraian": "Switch Hub 24 Port", "volume": 3, "satuan": "Unit", "harga_satuan": 5000000},
+        {"uraian": "Router WiFi Enterprise", "volume": 3, "satuan": "Unit", "harga_satuan": 10000000},
+        {"uraian": "Rack Server 42U", "volume": 1, "satuan": "Unit", "harga_satuan": 50000000},
+        {"uraian": "SSD 512GB", "volume": 20, "satuan": "Unit", "harga_satuan": 2400000},
+        {"uraian": "HDD External 2TB", "volume": 10, "satuan": "Unit", "harga_satuan": 1800000},
+        {"uraian": "Software Office Suite", "volume": 15, "satuan": "Lisensi", "harga_satuan": 6000000},
+        {"uraian": "Maintenance Service 1 Tahun", "volume": 5, "satuan": "Paket", "harga_satuan": 40000000},
+        {"uraian": "Pengadaan dan Instalasi Jaringan Fiber Optic Multi-Core Single-Mode 12 Core Untuk Area Data Center Gedung Utama Lantai 3-7 Termasuk Testing dan Commisioning", "volume": 2, "satuan": "Lot", "harga_satuan": 150000000},
     ]
 
     service = ExcelService()

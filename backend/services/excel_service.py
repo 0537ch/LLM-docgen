@@ -4,7 +4,7 @@ from openpyxl.utils import get_column_letter
 from typing import Dict, Any, List
 from pathlib import Path
 
-IDR_FORMAT = 'Rp #,##0'
+IDR_FORMAT = '#,##0'
 
 def number_to_terbilang(number: float) -> str:
     """Convert number to Indonesian words (terbilang)"""
@@ -50,7 +50,7 @@ class ExcelService:
         ws.title = sheet_name
 
         # Headers
-        headers = ["NO", "URAIAN", "VOLUME", "SATUAN", "HARGA SATUAN", "JUMLAH HARGA"]
+        headers = ["NO", "URAIAN", "VOLUME", "SATUAN", "HARGA SATUAN (IDR)", "JUMLAH HARGA (IDR)"]
         thin_border = Border(
             left=Side(style='thin'),
             right=Side(style='thin'),
@@ -61,7 +61,7 @@ class ExcelService:
             cell = ws.cell(row=1, column=col)
             cell.value = header
             cell.font = Font(bold=True)
-            cell.alignment = Alignment(horizontal="center")
+            cell.alignment = Alignment(horizontal="center", vertical="top")
             cell.border = thin_border
 
         # Data rows
@@ -76,8 +76,8 @@ class ExcelService:
 
             for col in range(1, 7):
                 ws.cell(row=row, column=col).border = thin_border
-                ws.cell(row=row, column=col).alignment = Alignment(horizontal="center")
-            ws.cell(row=row, column=2).alignment = Alignment(horizontal="left")
+                ws.cell(row=row, column=col).alignment = Alignment(horizontal="center", vertical="top")
+            ws.cell(row=row, column=2).alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
             # Format number columns as IDR
             ws.cell(row=row, column=5).number_format = IDR_FORMAT  # HARGA SATUAN
             ws.cell(row=row, column=6).number_format = IDR_FORMAT  # JUMLAH HARGA
@@ -88,7 +88,7 @@ class ExcelService:
         total_row = last_data_row + 1
         ws[f"E{total_row}"] = "Total"
         ws[f"E{total_row}"].font = Font(bold=True)
-        ws[f"E{total_row}"].alignment = Alignment(horizontal="right")
+        ws[f"E{total_row}"].alignment = Alignment(horizontal="right", vertical="top")
         ws[f"F{total_row}"] = f"=SUM(F2:F{last_data_row})"
         ws.cell(row=total_row, column=6).number_format = IDR_FORMAT
         for col in range(1, 7):
@@ -98,36 +98,24 @@ class ExcelService:
         # PPN row
         ppn_row = total_row + 1
         ws[f"E{ppn_row}"] = "PPN (11%)"
-        ws[f"E{ppn_row}"].alignment = Alignment(horizontal="right")
+        ws[f"E{ppn_row}"].alignment = Alignment(horizontal="right", vertical="top")
         ws[f"F{ppn_row}"] = f"=F{total_row}*0.11"
         ws.cell(row=ppn_row, column=6).number_format = IDR_FORMAT
         for col in range(1, 7):
             ws.cell(row=ppn_row, column=col).border = thin_border
 
-        # Grand Total row (now on row 5 since we removed merge)
+        # Grand Total row
         grand_row = ppn_row + 1
         ws[f"E{grand_row}"] = "Grand Total"
         ws[f"E{grand_row}"].font = Font(bold=True)
-        ws[f"E{grand_row}"].alignment = Alignment(horizontal="right")
+        ws[f"E{grand_row}"].alignment = Alignment(horizontal="right", vertical="top")
         ws[f"F{grand_row}"] = f"=F{total_row}+F{ppn_row}"
         ws.cell(row=grand_row, column=6).number_format = IDR_FORMAT
         for col in range(1, 7):
             ws.cell(row=grand_row, column=col).border = thin_border
             ws.cell(row=grand_row, column=col).font = Font(bold=True)
 
-        # Terbilang row - merged A{grand_row}:D{grand_row+2} with the spelled-out amount
-        grand_total_value = sum(float(item.get("harga_satuan", 0)) * float(item.get("volume", 0)) for item in items)
-        ppn_value = grand_total_value * 0.11
-        total_with_ppn = grand_total_value + ppn_value
-
-        ws.merge_cells(f'A{total_row}:D{grand_row}')
-        ws[f'A{total_row}'] = "Terbilang: " + number_to_terbilang(total_with_ppn)
-        ws[f'A{total_row}'].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        ws.row_dimensions[total_row].height = 45
-        ws.row_dimensions[total_row + 1].height = 45
-        ws.row_dimensions[grand_row].height = 45
-
-        # Auto-fit column widths based on content (skip merged cells)
+        # Auto-fit column widths first (before height calculation uses them)
         for col in range(1, 7):
             max_length = 0
             column = get_column_letter(col)
@@ -150,8 +138,32 @@ class ExcelService:
             if column == 'B':
                 ws.column_dimensions[column].width = min((max_length + 2) * 2, 50)
 
+        # Calculate grand total with PPN
+        grand_total_value = sum(float(item.get("harga_satuan", 0)) * float(item.get("volume", 0)) for item in items)
+        ppn_value = grand_total_value * 0.11
+        total_with_ppn = grand_total_value + ppn_value
+
+        # Terbilang merged cell spanning Total:Grand rows
+        ws.merge_cells(f'A{total_row}:D{grand_row}')
+        ws[f'A{total_row}'] = "Terbilang:\n" + number_to_terbilang(total_with_ppn)
+        ws[f'A{total_row}'].alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+        # Calculate merged width for wrap calculation (now columns are auto-fitted)
+        merged_width = sum(ws.column_dimensions[get_column_letter(c)].width for c in range(1, 5))
+        bilang_text = number_to_terbilang(total_with_ppn)
+        bilang_lines = len(bilang_text) / merged_width
+        single_row_height = int(max(20, bilang_lines * 15))
+        ws.row_dimensions[total_row].height = single_row_height
+
         return ws
 
     def save_workbook(self, wb: Workbook, output_path: str) -> None:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         wb.save(output_path)
+
+    def _calculate_required_height(self, text: str, col_width: float, font_size: float = 11) -> float:
+        """Calculate row height based on wrapped text"""
+        # ~1 char = 0.5 * font_size in points at default zoom
+        chars_per_line = col_width / (font_size * 0.55)
+        lines = max(1, len(text) / chars_per_line)
+        return max(20, lines * 15)

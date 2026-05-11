@@ -391,6 +391,7 @@ class DOCXService:
     def docx_to_html(self, doc: Document) -> str:
         """Convert docx Document to HTML string using mammoth"""
         from mammoth import convert_to_html
+        from bs4 import BeautifulSoup
 
         # Save docx to bytes for mammoth
         from io import BytesIO
@@ -400,7 +401,38 @@ class DOCXService:
 
         # Convert to HTML
         result = convert_to_html(docx_bytes)
-        return result.value
+
+        # Post-process: center paragraphs that contain <strong> tags
+        soup = BeautifulSoup(result.value, 'html.parser')
+        for p in soup.find_all('p'):
+            if p.find('strong'):
+                p['style'] = 'text-align: center; font-weight: bold; margin: 12px 0'
+                # Keep the strong tag inside, just center the paragraph
+            # Right-align "Dikeluarkan di" and "Tanggal" paragraphs
+            text = p.get_text().strip()
+            if text.startswith("Dikeluarkan di") or text.startswith("Tanggal:"):
+                p['style'] = 'text-align: right'
+
+        # Wrap with CSS for proper table styling
+        styled_html = f"""
+        <style>
+            .rks-preview {{ font-family: 'Times New Roman', serif; font-size: 12pt; margin: 0 1cm; padding: 0; }}
+            .rks-preview table {{ border-collapse: collapse; width: 100%; margin: 16px 0; }}
+            .rks-preview td, .rks-preview th {{ border: 1px solid #333; padding: 8px; vertical-align: top; }}
+            .rks-preview th {{ background-color: #f0f0f0; text-align: center; }}
+            .rks-preview td {{ text-align: left; }}
+            .rks-preview h1, .rks-preview h2, .rks-preview h3 {{ text-align: center; margin: 0; }}
+            .rks-preview p {{ margin: 0; text-align: justify; }}
+            .rks-preview p[style*='text-align: center'] {{ text-align: center !important; }}
+            .rks-preview .item-name {{ text-align: left !important; }}
+            .rks-preview .item-qty {{ text-align: center !important; }}
+            .rks-preview ol, .rks-preview ul {{ margin: 0; padding-left: 24px; }}
+        </style>
+        <div class="rks-preview">
+        {str(soup)}
+        </div>
+        """
+        return styled_html
 
     def insert_numbered_list(self, doc: Document, activities: List[str], placeholder: str) -> None:
         """Insert work activities as Word numbered list at placeholder position
