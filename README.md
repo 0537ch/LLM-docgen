@@ -142,11 +142,18 @@ Pasal 2 regeneration via `regenerate_pasal2()` accepts optional `custom_prompt` 
 
 ---
 
-## Setup
+## Prerequisites
+
+**Python:** 3.11+
+**Node.js:** 18+
+**GPU:** Optional (EasyOCR runs on CPU if CUDA unavailable)
 
 **Backend:**
 ```bash
 cd backend
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
 # Create .env with GEMINI_API_KEY=your_key_here
 python main.py  # http://localhost:8000
 ```
